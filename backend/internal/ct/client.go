@@ -1,0 +1,353 @@
+package ct
+
+import (
+	"encoding/json"
+	"fmt"
+	"io"
+	"log/slog"
+	"net/http"
+	"time"
+)
+
+type Client struct {
+	baseURL    string
+	apiToken   string
+	httpClient *http.Client
+}
+
+func NewClient(baseURL, apiToken string) *Client {
+	return &Client{
+		baseURL:    baseURL,
+		apiToken:   apiToken,
+		httpClient: &http.Client{Timeout: 15 * time.Second},
+	}
+}
+
+type Person struct {
+	ID          int    `json:"id"`
+	FirstName   string `json:"firstName"`
+	LastName    string `json:"lastName"`
+	Email       string `json:"email"`
+	PhoneNumber string `json:"phoneNumber"`
+	Mobile      string `json:"mobile,omitempty"`
+}
+
+type Child struct {
+	Person
+	GroupID   int    `json:"groupId"`
+	GroupName string `json:"groupName"`
+}
+
+type CheckInStatus struct {
+	ChildID   int  `json:"childId"`
+	MeetingID int  `json:"meetingId"`
+	CheckedIn bool `json:"checkedIn"`
+}
+
+func (c *Client) GetPerson(id int) (*Person, error) {
+	var resp struct {
+		Data Person `json:"data"`
+	}
+	if err := c.get(fmt.Sprintf("/persons/%d", id), &resp); err != nil {
+		return nil, err
+	}
+	return &resp.Data, nil
+}
+
+// GetChildren returns members of groups with groupTypeId == 3 (Kids).
+// Adjust groupTypeId to match your ChurchTools instance.
+func (c *Client) GetChildren() ([]Child, error) {
+	const groupID = 599
+	const groupName = "KinderKirche"
+
+	type memberPage struct {
+		Data []struct {
+			PersonID int `json:"personId"`
+			Person   struct {
+				DomainIdentifier string `json:"domainIdentifier"`
+				DomainAttributes struct {
+					FirstName string `json:"firstName"`
+					LastName  string `json:"lastName"`
+				} `json:"domainAttributes"`
+			} `json:"person"`
+		} `json:"data"`
+		Meta struct {
+			Pagination struct {
+				LastPage int `json:"lastPage"`
+			} `json:"pagination"`
+		} `json:"meta"`
+	}
+
+	children := make([]Child, 0)
+	page := 1
+	for {
+		raw, err := c.getRaw(fmt.Sprintf("/groups/%d/members?page=%d&limit=100", groupID, page))
+		if err != nil {
+			return nil, err
+		}
+		var resp memberPage
+		if err := json.Unmarshal(raw, &resp); err != nil {
+			return nil, fmt.Errorf("members unmarshal: %w", err)
+		}
+		for _, m := range resp.Data {
+			children = append(children, Child{
+				Person: Person{
+					ID:        m.PersonID,
+					FirstName: m.Person.DomainAttributes.FirstName,
+					LastName:  m.Person.DomainAttributes.LastName,
+				},
+				GroupID:   groupID,
+				GroupName: groupName,
+			})
+		}
+		if page >= resp.Meta.Pagination.LastPage {
+			break
+		}
+		page++
+	}
+	return children, nil
+}
+
+// relEntry is the shared struct for CT relationship list items.
+type relEntry struct {
+	RelationshipTypeID   int    `json:"relationshipTypeId"`
+	DegreeOfRelationship string `json:"degreeOfRelationship"`
+	Relative             struct {
+		DomainIdentifier string `json:"domainIdentifier"`
+		DomainAttributes struct {
+			FirstName string `json:"firstName"`
+			LastName  string `json:"lastName"`
+		} `json:"domainAttributes"`
+	} `json:"relative"`
+}
+
+func (c *Client) getRelationships(personID int) ([]relEntry, error) {
+	raw, err := c.getRaw(fmt.Sprintf("/persons/%d/relationships", personID))
+	if err != nil {
+		return nil, err
+	}
+	slog.Debug("CT relationships raw", "personId", personID, "body", string(raw))
+	var resp struct {
+		Data []relEntry `json:"data"`
+	}
+	if err := json.Unmarshal(raw, &resp); err != nil {
+		return nil, fmt.Errorf("relationships unmarshal: %w", err)
+	}
+	return resp.Data, nil
+}
+
+// GetChildrenForParent returns children linked to a parent via CT relationships.
+func (c *Client) GetChildrenForParent(parentID int) ([]Child, error) {
+	rels, err := c.getRelationships(parentID)
+	if err != nil {
+		return nil, err
+	}
+	children := make([]Child, 0)
+	for _, rel := range rels {
+		slog.Debug("CT relationship entry", "typeId", rel.RelationshipTypeID, "degree", rel.DegreeOfRelationship, "person", rel.Relative.DomainAttributes.FirstName)
+		if rel.RelationshipTypeID == 1 && rel.DegreeOfRelationship == "relationship.part.child" {
+			id := 0
+			fmt.Sscanf(rel.Relative.DomainIdentifier, "%d", &id)
+			children = append(children, Child{
+				Person: Person{
+					ID:        id,
+					FirstName: rel.Relative.DomainAttributes.FirstName,
+					LastName:  rel.Relative.DomainAttributes.LastName,
+				},
+				GroupID:   599,
+				GroupName: "KinderKirche",
+			})
+		}
+	}
+	return children, nil
+}
+
+// GetParentsForChild returns parent person IDs linked to a child via CT relationships.
+func (c *Client) GetParentsForChild(childID int) ([]int, error) {
+	rels, err := c.getRelationships(childID)
+	if err != nil {
+		return nil, err
+	}
+	var parentIDs []int
+	for _, rel := range rels {
+		slog.Debug("CT child relationship entry", "typeId", rel.RelationshipTypeID, "degree", rel.DegreeOfRelationship, "person", rel.Relative.DomainAttributes.FirstName)
+		if rel.RelationshipTypeID == 1 && rel.DegreeOfRelationship == "relationship.part.parent" {
+			id := 0
+			fmt.Sscanf(rel.Relative.DomainIdentifier, "%d", &id)
+			if id != 0 {
+				parentIDs = append(parentIDs, id)
+			}
+		}
+	}
+	return parentIDs, nil
+}
+
+// getTodayMeetingID returns the meeting ID for today in the given group.
+// If no meeting exists for today, it creates one.
+func (c *Client) getTodayMeetingID(groupID int) (int, error) {
+	today := time.Now().UTC().Format("2006-01-02")
+	tomorrow := time.Now().UTC().AddDate(0, 0, 1).Format("2006-01-02")
+	var listResp struct {
+		Data []struct {
+			ID int `json:"id"`
+		} `json:"data"`
+	}
+	if err := c.get(fmt.Sprintf("/groups/%d/meetings?from=%s&to=%s", groupID, today, tomorrow), &listResp); err != nil {
+		return 0, fmt.Errorf("list meetings: %w", err)
+	}
+	if len(listResp.Data) > 0 {
+		// Use the last (most recent) meeting of the day
+		return listResp.Data[len(listResp.Data)-1].ID, nil
+	}
+	// No meeting today — create one
+	startDate := time.Now().UTC().Format("2006-01-02T15:04:05Z")
+	var createResp struct {
+		Data struct {
+			ID int `json:"id"`
+		} `json:"data"`
+	}
+	if err := c.post(fmt.Sprintf("/groups/%d/meetings", groupID), map[string]any{"startDate": startDate}, &createResp); err != nil {
+		return 0, fmt.Errorf("create meeting: %w", err)
+	}
+	slog.Info("CT created new meeting for today", "groupId", groupID, "meetingId", createResp.Data.ID)
+	return createResp.Data.ID, nil
+}
+
+func (c *Client) GetCheckInStatus(childID, groupID int) (*CheckInStatus, error) {
+	meetingID, err := c.getTodayMeetingID(groupID)
+	if err != nil || meetingID == 0 {
+		// No meeting today means nobody is checked in
+		return &CheckInStatus{ChildID: childID, CheckedIn: false}, nil
+	}
+	var membersResp struct {
+		Data []struct {
+			Member struct {
+				PersonID int `json:"personId"`
+			} `json:"member"`
+			PersonID    int  `json:"personId"`
+			IsCheckedIn bool `json:"isCheckedIn"`
+		} `json:"data"`
+	}
+	if err := c.get(fmt.Sprintf("/groups/%d/meetings/%d/members", groupID, meetingID), &membersResp); err != nil {
+		return nil, err
+	}
+	for _, m := range membersResp.Data {
+		if m.Member.PersonID == childID {
+			return &CheckInStatus{ChildID: childID, MeetingID: meetingID, CheckedIn: m.IsCheckedIn}, nil
+		}
+	}
+	return &CheckInStatus{ChildID: childID, MeetingID: meetingID, CheckedIn: false}, nil
+}
+
+func (c *Client) CheckIn(childID, groupID int) error {
+	meetingID, err := c.getTodayMeetingID(groupID)
+	if err != nil {
+		return fmt.Errorf("getTodayMeeting: %w", err)
+	}
+	return c.post(fmt.Sprintf("/groups/%d/checkin/%d", groupID, childID), map[string]any{
+		"date":           time.Now().UTC().Format("2006-01-02T15:04:05Z"),
+		"groupMeetingId": meetingID,
+	}, nil)
+}
+
+func (c *Client) CheckOut(childID, groupID int) error {
+	meetingID, err := c.getTodayMeetingID(groupID)
+	if err != nil {
+		return fmt.Errorf("getTodayMeeting: %w", err)
+	}
+	if meetingID == 0 {
+		return nil // nothing to check out from
+	}
+	return c.delete(fmt.Sprintf("/groups/%d/meetings/%d/members/%d", groupID, meetingID, childID))
+}
+
+func (c *Client) get(path string, out any) error {
+	raw, err := c.getRaw(path)
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(raw, out)
+}
+
+func (c *Client) getRaw(path string) ([]byte, error) {
+	url := c.baseURL + path
+	slog.Debug("CT GET", "url", url)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	c.setHeaders(req)
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		slog.Warn("CT GET failed", "url", url, "err", err)
+		return nil, err
+	}
+	defer resp.Body.Close()
+	slog.Debug("CT GET response", "url", url, "status", resp.StatusCode)
+	b, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 400 {
+		slog.Warn("CT GET error response", "url", url, "status", resp.StatusCode, "body", string(b))
+		return nil, fmt.Errorf("CT API %s: %s", resp.Status, b)
+	}
+	return b, nil
+}
+
+func (c *Client) post(path string, body any, out any) error {
+	url := c.baseURL + path
+	slog.Debug("CT POST", "url", url)
+	pr, pw := io.Pipe()
+	go func() {
+		_ = json.NewEncoder(pw).Encode(body)
+		pw.Close()
+	}()
+	req, err := http.NewRequest(http.MethodPost, url, pr)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	c.setHeaders(req)
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		slog.Warn("CT POST failed", "url", url, "err", err)
+		return err
+	}
+	defer resp.Body.Close()
+	slog.Debug("CT POST response", "url", url, "status", resp.StatusCode)
+	if resp.StatusCode >= 400 {
+		b, _ := io.ReadAll(resp.Body)
+		slog.Warn("CT POST error response", "url", url, "status", resp.StatusCode, "body", string(b))
+		return fmt.Errorf("CT API %s: %s", resp.Status, b)
+	}
+	if out != nil {
+		return json.NewDecoder(resp.Body).Decode(out)
+	}
+	return nil
+}
+
+func (c *Client) delete(path string) error {
+	url := c.baseURL + path
+	slog.Debug("CT DELETE", "url", url)
+	req, err := http.NewRequest(http.MethodDelete, url, nil)
+	if err != nil {
+		return err
+	}
+	c.setHeaders(req)
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		slog.Warn("CT DELETE failed", "url", url, "err", err)
+		return err
+	}
+	defer resp.Body.Close()
+	slog.Debug("CT DELETE response", "url", url, "status", resp.StatusCode)
+	if resp.StatusCode >= 400 {
+		b, _ := io.ReadAll(resp.Body)
+		slog.Warn("CT DELETE error response", "url", url, "status", resp.StatusCode, "body", string(b))
+		return fmt.Errorf("CT API %s: %s", resp.Status, b)
+	}
+	return nil
+}
+
+func (c *Client) setHeaders(req *http.Request) {
+	req.Header.Set("Authorization", "Login "+c.apiToken)
+	req.Header.Set("Accept", "application/json")
+}
