@@ -21,9 +21,16 @@ self.addEventListener('push', (event) => {
     }
   }
   event.waitUntil(
-    self.registration.showNotification(data.title, {
-      body: data.body,
-    }).catch((err) => console.error('[SW] showNotification failed:', err))
+    Promise.all([
+      self.registration.showNotification(data.title, {
+        body: data.body,
+      }).catch((err) => console.error('[SW] showNotification failed:', err)),
+      clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+        for (const client of clientList) {
+          client.postMessage({ type: 'PUSH_RECEIVED', data })
+        }
+      }),
+    ])
   )
 })
 

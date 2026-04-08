@@ -1,7 +1,8 @@
 <template>
   <div class="min-h-screen bg-gray-50">
     <header class="bg-white shadow-sm">
-      <div class="max-w-2xl mx-auto px-4 py-5 text-center">
+      <div class="max-w-2xl mx-auto px-4 py-4 flex items-center justify-center gap-2">
+        <img src="/favicon.svg" alt="CCF" class="w-7 h-7" />
         <h1 class="text-xl font-bold text-gray-800">Kinder Anmeldung</h1>
       </div>
     </header>
@@ -75,7 +76,7 @@
             <p>Tippe <strong>Teilen</strong> → <strong>„Zum Home-Bildschirm"</strong> → App öffnen.</p>
           </div>
           <button
-            v-if="pushState === 'available' && !isIos"
+            v-if="pushState === 'available' && (!isIos || isStandalone)"
             @click="enablePush"
             :disabled="pushBusy"
             class="flex items-center gap-2 text-sm font-medium text-green-700 bg-green-100 hover:bg-green-200 active:bg-green-300 px-4 py-2 rounded-xl transition active:scale-95 disabled:opacity-50"
@@ -142,10 +143,18 @@ async function installPwa() {
   if (outcome === 'accepted') installPrompt.value = null
 }
 
-const { page, loading, error } = useLiveParentPage(token)
+const { page, loading, error, poll } = useLiveParentPage(token)
 
 // Persist token and init push once the page first loads.
-onMounted(() => localStorage.setItem('parentToken', token))
+onMounted(() => {
+  localStorage.setItem('parentToken', token)
+  // Immediately re-poll when a push notification arrives.
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.addEventListener('message', (e) => {
+      if (e.data?.type === 'PUSH_RECEIVED') poll()
+    })
+  }
+})
 const _stopWatchPage = watch(page, (p) => {
   if (p) { initPushState(); _stopWatchPage() }
 })
@@ -169,7 +178,11 @@ function initPushState() {
   if (perm === 'granted') {
     // Already granted — resubscribe silently to ensure subscription is saved.
     pushState.value = 'granted'
-    subscribeToPush(token).catch(() => {})
+    subscribeToPush(token).catch((e) => {
+      // Re-subscribe failed (e.g. subscription invalidated) — let user re-activate.
+      console.warn('[push] silent re-subscribe failed:', e)
+      pushState.value = 'available'
+    })
   } else if (perm === 'denied') {
     pushState.value = 'denied'
   } else {

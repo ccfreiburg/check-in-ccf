@@ -53,5 +53,5 @@ export function useLiveParentPage(token: string, opts?: {
     if (timer) clearInterval(timer)
   })
 
-  return { page, loading, error }
+  return { page, loading, error, poll }
 }
