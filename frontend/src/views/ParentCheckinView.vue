@@ -23,7 +23,6 @@
             Wähle ein Kind aus und tippe „Anmelden", um es am Eingang anzumelden.
           </p>
 
-          <!-- QR code -->
           <div class="flex justify-center py-2">
             <img
               :src="`/api/parent/${token}/qr`"
@@ -41,75 +40,90 @@
             </svg>
             QR-Code teilen
           </button>
+
+          <!-- Push notification opt-in -->
+          <!-- Android: show install prompt if available -->
+          <button
+            v-if="installPrompt && !isStandalone"
+            @click="installPwa"
+            class="flex items-center gap-2 text-sm font-medium text-orange-700 bg-orange-100 hover:bg-orange-200 active:bg-orange-300 px-4 py-2 rounded-xl transition active:scale-95"
+          >
+            📲 App installieren
+          </button>
+          <!-- iOS: must be installed as PWA first -->
+          <div
+            v-if="isIos && !isStandalone"
+            class="bg-orange-50 border border-orange-200 rounded-xl px-3 py-2 text-xs text-orange-800 space-y-1"
+          >
+            <p class="font-semibold">📲 Für Benachrichtigungen auf iPhone:</p>
+            <p>Tippe <strong>Teilen</strong> → <strong>„Zum Home-Bildschirm"</strong> → App öffnen.</p>
+          </div>
+          <button
+            v-if="pushState === 'available' && !isIos"
+            @click="enablePush"
+            :disabled="pushBusy"
+            class="flex items-center gap-2 text-sm font-medium text-green-700 bg-green-100 hover:bg-green-200 active:bg-green-300 px-4 py-2 rounded-xl transition active:scale-95 disabled:opacity-50"
+          >
+            🔔 Benachrichtigungen aktivieren
+          </button>
+          <p v-if="pushState === 'granted'" class="text-xs text-green-700">🔔 Benachrichtigungen aktiviert ✓</p>
+          <p v-if="pushState === 'denied'" class="text-xs text-yellow-700">Benachrichtigungen wurden blockiert. Bitte in den Browser-Einstellungen freigeben.</p>
+          <p v-if="pushError" class="text-xs text-red-600">Fehler: {{ pushError }}</p>
         </div>
 
-        <!-- Child cards -->
-        <ul class="space-y-4">
-          <li
-            v-for="child in page.children"
-            :key="child.id"
-            class="bg-white rounded-2xl shadow-sm p-5"
-          >
-            <div class="flex items-start justify-between mb-1">
-              <div>
-                <p class="font-semibold text-gray-900 text-lg">
-                  {{ child.firstName }} {{ child.lastName }}
-                </p>
-                <p class="text-sm text-gray-500">
-                  {{ child.groupName }}
-                  <span v-if="child.birthdate" class="ml-2 text-gray-400">· {{ formatDate(child.birthdate) }}</span>
-                </p>
-              </div>
-              <!-- Status badge -->
-              <span
-                :class="statusClass(child.status)"
-                class="text-xs font-semibold px-3 py-1 rounded-full shrink-0 ml-2"
-              >
-                {{ statusLabel(child.status) }}
-              </span>
-            </div>
-
-            <!-- Anmelden button — only shown when not yet registered today -->
-            <button
-              v-if="child.status === ''"
-              @click="anmelden(child)"
-              :disabled="busy[child.id]"
-              class="mt-4 w-full bg-green-600 hover:bg-green-700 active:bg-green-800 text-white font-semibold py-3 rounded-xl text-base disabled:opacity-50 transition active:scale-95"
-            >
-              <span v-if="busy[child.id]">Bitte warten…</span>
-              <span v-else>Anmelden</span>
-            </button>
-          </li>
-        </ul>
-
-        <p v-if="page.children.length === 0" class="text-center text-gray-400 py-8">
-          Keine Kinder hinterlegt. Bitte beim Dienst melden.
-        </p>
-
-        <!-- Flash -->
-        <transition name="fade">
-          <div
-            v-if="flashMsg"
-            class="fixed bottom-6 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-sm font-medium px-5 py-3 rounded-full shadow-lg"
-          >
-            {{ flashMsg }}
-          </div>
-        </transition>
+        <ChildList
+          :items="childItems"
+          :busy="busy"
+          variant="parent"
+          empty-text="Keine Kinder hinterlegt. Bitte beim Dienst melden."
+          @register="handleRegister"
+        />
       </template>
     </div>
+
+    <transition name="fade">
+      <div
+        v-if="flashMsg"
+        class="fixed bottom-6 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-sm font-medium px-5 py-3 rounded-full shadow-lg"
+      >
+        {{ flashMsg }}
+      </div>
+    </transition>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { getParentPage, registerChild } from '../api'
-import type { ParentCheckinPage, ChildWithStatus, CheckInStatus } from '../api/types'
+import { subscribeToPush } from '../utils/push'
+import type { ParentCheckinPage, ChildWithStatus } from '../api/types'
+import type { ChildCardItem } from '../utils/status'
+import ChildList from '../components/ChildList.vue'
 
 const pageUrl = window.location.href
 
 const route = useRoute()
 const token = route.params.token as string
+
+// iOS PWA detection
+const isIos = /iphone|ipad|ipod/.test(navigator.userAgent.toLowerCase())
+const isStandalone = ('standalone' in navigator && (navigator as Navigator & { standalone: boolean }).standalone) ||
+  window.matchMedia('(display-mode: standalone)').matches
+
+// Android install prompt (beforeinstallprompt)
+type BeforeInstallPromptEvent = Event & { prompt(): Promise<void>; userChoice: Promise<{ outcome: string }> }
+const installPrompt = ref<BeforeInstallPromptEvent | null>(null)
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault()
+  installPrompt.value = e as BeforeInstallPromptEvent
+})
+async function installPwa() {
+  if (!installPrompt.value) return
+  await installPrompt.value.prompt()
+  const { outcome } = await installPrompt.value.userChoice
+  if (outcome === 'accepted') installPrompt.value = null
+}
 
 const page = ref<ParentCheckinPage | null>(null)
 const loading = ref(true)
@@ -118,9 +132,62 @@ const busy = reactive<Record<number, boolean>>({})
 const flashMsg = ref('')
 let flashTimer: ReturnType<typeof setTimeout> | null = null
 
+// Push notification state: 'unknown' | 'available' | 'granted' | 'denied' | 'unsupported'
+const pushState = ref<'unknown' | 'available' | 'granted' | 'denied' | 'unsupported'>('unknown')
+const pushBusy = ref(false)
+const pushError = ref('')
+
+function initPushState() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+    pushState.value = 'unsupported'
+    return
+  }
+  const perm = Notification.permission
+  if (perm === 'granted') {
+    // Already granted — resubscribe silently to ensure subscription is saved.
+    pushState.value = 'granted'
+    subscribeToPush(token).catch(() => {})
+  } else if (perm === 'denied') {
+    pushState.value = 'denied'
+  } else {
+    pushState.value = 'available'
+  }
+}
+
+async function enablePush() {
+  pushBusy.value = true
+  pushError.value = ''
+  try {
+    const ok = await subscribeToPush(token)
+    pushState.value = ok ? 'granted' : 'denied'
+  } catch (e) {
+    pushState.value = 'denied'
+    pushError.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    pushBusy.value = false
+  }
+}
+
+const childItems = computed((): ChildCardItem[] =>
+  (page.value?.children ?? []).map(c => ({
+    id: c.id,
+    firstName: c.firstName,
+    lastName: c.lastName,
+    birthdate: c.birthdate,
+    groupId: c.groupId,
+    groupName: c.groupName,
+    status: c.status,
+    checkedInAt: null,
+    lastNotifiedAt: c.lastNotifiedAt,
+  }))
+)
+
 onMounted(async () => {
+  // Persist the token so the PWA (installed to home screen) can restore the URL.
+  localStorage.setItem('parentToken', token)
   try {
     page.value = await getParentPage(token)
+    initPushState()
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Fehler beim Laden'
   } finally {
@@ -137,7 +204,7 @@ async function shareQR() {
         url: pageUrl,
       })
     } catch {
-      // user cancelled — silently ignore
+      // user cancelled
     }
   } else {
     try {
@@ -149,42 +216,19 @@ async function shareQR() {
   }
 }
 
-async function anmelden(child: ChildWithStatus) {
-  if (busy[child.id]) return
-  busy[child.id] = true
+async function handleRegister(item: ChildCardItem) {
+  if (busy[item.id]) return
+  busy[item.id] = true
   try {
-    await registerChild(token, child.id)
-    child.status = 'pending'
-    showFlash(`${child.firstName} wurde angemeldet ✓`)
+    await registerChild(token, item.id)
+    const child = page.value?.children.find((c: ChildWithStatus) => c.id === item.id)
+    if (child) child.status = 'pending'
+    showFlash(`${item.firstName} wurde angemeldet ✓`)
   } catch (e) {
     showFlash(e instanceof Error ? e.message : 'Fehler beim Anmelden')
   } finally {
-    busy[child.id] = false
+    busy[item.id] = false
   }
-}
-
-function statusLabel(s: CheckInStatus): string {
-  switch (s) {
-    case 'pending':    return 'Angemeldet'
-    case 'registered': return 'Namensschild erhalten'
-    case 'checked_in': return 'In der Gruppe ✓'
-    default:           return 'Noch nicht angemeldet'
-  }
-}
-
-function statusClass(s: CheckInStatus): string {
-  switch (s) {
-    case 'pending':    return 'bg-yellow-100 text-yellow-700'
-    case 'registered': return 'bg-blue-100 text-blue-700'
-    case 'checked_in': return 'bg-green-100 text-green-700'
-    default:           return 'bg-gray-100 text-gray-500'
-  }
-}
-
-function formatDate(iso: string): string {
-  if (!iso) return ''
-  const d = new Date(iso)
-  return isNaN(d.getTime()) ? iso : d.toLocaleDateString('de-DE')
 }
 
 function showFlash(msg: string) {

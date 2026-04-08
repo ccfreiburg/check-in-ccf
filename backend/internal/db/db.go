@@ -18,6 +18,7 @@ func Open(path string) (*gorm.DB, error) {
 	}
 	if err := database.AutoMigrate(
 		&CheckIn{},
+		&PushSubscription{},
 		&Setting{},
 		&SyncedPerson{},
 		&SyncedGroupMembership{},

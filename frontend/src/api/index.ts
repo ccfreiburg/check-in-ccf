@@ -1,4 +1,4 @@
-import type { Child, Parent, CheckInRecord, ParentDetail, ParentCheckinPage } from './types'
+import type { Child, Parent, CheckInRecord, ParentDetail, ParentCheckinPage, CheckInStatus } from './types'
 
 const BASE = '/api'
 
@@ -8,11 +8,14 @@ function authHeaders(): HeadersInit {
 }
 
 export class ApiError extends Error {
-  constructor(public readonly status: number, message: string) {
+  readonly status: number
+  readonly isAuthError: boolean
+  constructor(status: number, message: string) {
     super(message)
     this.name = 'ApiError'
+    this.status = status
+    this.isAuthError = status === 401 || status === 403
   }
-  get isAuthError() { return this.status === 401 || this.status === 403 }
 }
 
 async function handleResponse<T>(res: Response): Promise<T> {
@@ -153,4 +156,34 @@ export async function registerChild(
     method: 'POST',
   })
   return handleResponse<{ status: string; id: number }>(res)
+}
+
+// ── Push notifications ────────────────────────────────────────────────────
+
+export async function getVAPIDPublicKey(): Promise<string> {
+  const res = await fetch(`${BASE}/push/vapid-public-key`)
+  const data = await handleResponse<{ publicKey: string }>(res)
+  return data.publicKey
+}
+
+export async function savePushSubscription(
+  token: string,
+  sub: PushSubscriptionJSON,
+): Promise<void> {
+  const keys = sub.keys as { p256dh: string; auth: string }
+  const res = await fetch(`${BASE}/parent/${token}/push-subscription`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ endpoint: sub.endpoint, p256dh: keys.p256dh, auth: keys.auth }),
+  })
+  await handleResponse<{ status: string }>(res)
+}
+
+/** Admin: send a "please come" push notification to the parent of a check-in record. */
+export async function sendParentMessage(checkinId: number): Promise<{ sent: number }> {
+  const res = await fetch(`${BASE}/admin/checkins/${checkinId}/notify`, {
+    method: 'POST',
+    headers: authHeaders(),
+  })
+  return handleResponse<{ sent: number }>(res)
 }

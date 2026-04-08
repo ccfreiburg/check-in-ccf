@@ -13,76 +13,19 @@
       <div v-else-if="error" class="text-center text-red-500 py-12">{{ error }}</div>
 
       <template v-else>
-        <!-- Group filter -->
-        <div class="flex gap-2 flex-wrap">
-          <button
-            @click="activeGroup = null"
-            :class="activeGroup === null ? 'bg-amber-500 text-white' : 'bg-white text-gray-600 border border-gray-300'"
-            class="px-4 py-2 rounded-full text-sm font-medium transition"
-          >
-            Alle
-            <span class="ml-1 opacity-70">({{ records.length }})</span>
-          </button>
-          <button
-            v-for="g in groups"
-            :key="g.id"
-            @click="activeGroup = g.id"
-            :class="activeGroup === g.id ? 'bg-amber-500 text-white' : 'bg-white text-gray-600 border border-gray-300'"
-            class="px-4 py-2 rounded-full text-sm font-medium transition"
-          >
-            {{ g.name }}
-            <span class="ml-1 opacity-70">({{ countByGroup(g.id) }})</span>
-          </button>
-        </div>
+        <GroupFilterLabels
+          :items="groupTabs"
+          v-model="activeGroup"
+          active-class="bg-amber-500 text-white"
+        />
 
-        <ul class="space-y-3">
-          <li
-            v-for="rec in filtered"
-            :key="rec.ID"
-            class="bg-white rounded-2xl shadow-sm p-4"
-          >
-            <div class="flex items-start justify-between mb-3">
-              <div>
-                <p class="font-semibold text-gray-900 text-base">
-                  {{ rec.FirstName }} {{ rec.LastName }}
-                </p>
-                <p class="text-sm text-gray-500">
-                  {{ rec.GroupName }}
-                  <span v-if="rec.Birthdate" class="ml-2 text-gray-400">· {{ formatDate(rec.Birthdate) }}</span>
-                </p>
-              </div>
-              <span :class="statusClass(rec.Status)" class="text-xs font-semibold px-3 py-1 rounded-full shrink-0 ml-2">
-                {{ statusLabel(rec.Status) }}
-              </span>
-            </div>
-
-            <div class="flex flex-wrap gap-2 mt-1">
-              <button
-                v-for="opt in statusOptions"
-                :key="opt.value"
-                @click="override(rec, opt.value)"
-                :disabled="busy[rec.ID] || rec.Status === opt.value"
-                :class="rec.Status === opt.value
-                  ? 'opacity-40 cursor-default bg-gray-100 text-gray-500'
-                  : opt.cls"
-                class="flex-1 min-w-[120px] py-2 rounded-xl text-sm font-medium disabled:opacity-40 transition"
-              >
-                {{ busy[rec.ID] ? '…' : opt.label }}
-              </button>
-              <button
-                @click="override(rec, '')"
-                :disabled="busy[rec.ID]"
-                class="flex-1 min-w-[120px] py-2 rounded-xl text-sm font-medium bg-red-50 text-red-700 hover:bg-red-100 disabled:opacity-40 transition"
-              >
-                {{ busy[rec.ID] ? '…' : 'Zurücksetzen' }}
-              </button>
-            </div>
-          </li>
-        </ul>
-
-        <p v-if="filtered.length === 0" class="text-center text-gray-400 py-10">
-          Heute noch keine Anmeldungen.
-        </p>
+        <ChildList
+          :items="filtered.map(toCardItem)"
+          :busy="busy"
+          variant="super"
+          empty-text="Heute noch keine Anmeldungen."
+          @override="handleOverride"
+        />
       </template>
     </div>
   </div>
@@ -93,8 +36,11 @@ import { ref, computed, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { listCheckins, setCheckInStatus, ApiError } from '../api'
 import { useAuthStore } from '../stores/auth'
-import type { CheckInRecord, CheckInStatus } from '../api/types'
+import type { CheckInRecord } from '../api/types'
+import type { ChildCardItem, FilterTab } from '../utils/status'
 import AdminNav from '../components/AdminNav.vue'
+import GroupFilterLabels from '../components/GroupFilterLabels.vue'
+import ChildList from '../components/ChildList.vue'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -113,20 +59,32 @@ const groups = computed(() => {
   return [...seen.entries()].map(([id, name]) => ({ id, name }))
 })
 
+const groupTabs = computed((): FilterTab[] => [
+  { value: null, label: 'Alle', count: records.value.length },
+  ...groups.value.map(g => ({
+    value: g.id,
+    label: g.name,
+    count: records.value.filter(r => r.GroupID === g.id).length,
+  })),
+])
+
 const filtered = computed(() => {
   if (activeGroup.value === null) return records.value
-  return records.value.filter((r) => r.GroupID === activeGroup.value)
+  return records.value.filter(r => r.GroupID === activeGroup.value)
 })
 
-function countByGroup(id: number): number {
-  return records.value.filter((r) => r.GroupID === id).length
+function toCardItem(r: CheckInRecord): ChildCardItem {
+  return {
+    id: r.ID,
+    firstName: r.FirstName,
+    lastName: r.LastName,
+    birthdate: r.Birthdate,
+    groupId: r.GroupID,
+    groupName: r.GroupName,
+    status: r.Status,
+    checkedInAt: r.CheckedInAt,
+  }
 }
-
-const statusOptions: { value: CheckInStatus; label: string; cls: string }[] = [
-  { value: 'pending',    label: 'Angemeldet',            cls: 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200' },
-  { value: 'registered', label: 'Namensschild erhalten', cls: 'bg-blue-100 text-blue-700 hover:bg-blue-200'       },
-  { value: 'checked_in', label: 'In der Gruppe',         cls: 'bg-green-100 text-green-700 hover:bg-green-200'   },
-]
 
 onMounted(load)
 
@@ -146,46 +104,22 @@ async function load() {
   }
 }
 
-async function override(rec: CheckInRecord, status: CheckInStatus | '') {
-  if (busy[rec.ID]) return
-  busy[rec.ID] = true
+async function handleOverride(item: ChildCardItem, status: string) {
+  if (busy[item.id]) return
+  busy[item.id] = true
   try {
-    const result = await setCheckInStatus(rec.ID, status)
+    const result = await setCheckInStatus(item.id, status as never)
     if ('status' in result && result.status === 'deleted') {
-      records.value = records.value.filter((r) => r.ID !== rec.ID)
+      records.value = records.value.filter(r => r.ID !== item.id)
     } else {
-      const idx = records.value.findIndex((r) => r.ID === rec.ID)
+      const idx = records.value.findIndex(r => r.ID === item.id)
       if (idx !== -1) records.value[idx] = result as CheckInRecord
     }
   } catch (e) {
     alert(e instanceof Error ? e.message : 'Fehler')
   } finally {
-    busy[rec.ID] = false
+    busy[item.id] = false
   }
-}
-
-function statusLabel(s: CheckInStatus): string {
-  switch (s) {
-    case 'pending':    return 'Angemeldet'
-    case 'registered': return 'Namensschild erhalten'
-    case 'checked_in': return 'In der Gruppe'
-    default:           return s || '–'
-  }
-}
-
-function statusClass(s: CheckInStatus): string {
-  switch (s) {
-    case 'pending':    return 'bg-yellow-100 text-yellow-700'
-    case 'registered': return 'bg-blue-100 text-blue-700'
-    case 'checked_in': return 'bg-green-100 text-green-700'
-    default:           return 'bg-gray-100 text-gray-500'
-  }
-}
-
-function formatDate(d: string): string {
-  if (!d) return ''
-  const [y, m, day] = d.split('-')
-  return `${day}.${m}.${y}`
 }
 
 function logout() {

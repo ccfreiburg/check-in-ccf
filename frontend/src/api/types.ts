@@ -37,6 +37,7 @@ export type CheckInStatus = '' | 'pending' | 'registered' | 'checked_in'
 
 export interface ChildWithStatus extends Child {
   status: CheckInStatus
+  lastNotifiedAt?: string | null
 }
 
 export interface ParentDetail {

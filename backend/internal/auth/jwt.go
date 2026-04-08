@@ -109,3 +109,15 @@ func SuperAdminMiddleware(secret []byte) func(http.Handler) http.Handler {
 		})
 	}
 }
+
+// ValidateParentToken parses a parent JWT from a URL path parameter (not a header).
+func ValidateParentToken(secret []byte, tokenStr string) (*Claims, error) {
+	claims, err := ParseToken(secret, tokenStr)
+	if err != nil {
+		return nil, err
+	}
+	if claims.Role != "parent" {
+		return nil, jwt.ErrTokenInvalidClaims
+	}
+	return claims, nil
+}

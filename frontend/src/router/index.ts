@@ -6,7 +6,11 @@ const router = createRouter({
   routes: [
     {
       path: '/',
-      redirect: '/admin',
+      redirect: () => {
+        const parentToken = localStorage.getItem('parentToken')
+        if (parentToken) return `/checkin/${parentToken}`
+        return '/admin'
+      },
     },
     {
       path: '/login',
@@ -41,6 +45,11 @@ const router = createRouter({
       meta: { requiresAuth: true },
     },
     {
+      path: '/admin/checkins/:id/notify',
+      component: () => import('../views/AdminSendMessageView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
       path: '/admin/super',
       component: () => import('../views/AdminSuperView.vue'),
       meta: { requiresAuth: true, requiresSuperAdmin: true },
@@ -55,6 +64,7 @@ const router = createRouter({
 
 router.beforeEach((to) => {
   const auth = useAuthStore()
+
   if (to.meta.requiresAuth && !auth.isLoggedIn) {
     return '/login'
   }

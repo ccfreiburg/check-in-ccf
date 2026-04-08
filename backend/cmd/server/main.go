@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -100,6 +101,7 @@ func main() {
 		r.Get("/api/admin/checkins", h.ListCheckins)
 		r.Post("/api/admin/checkins/{id}/confirm", h.ConfirmTagHandout)
 		r.Post("/api/admin/checkins/{id}/checkin", h.CheckInAtGroup)
+		r.Post("/api/admin/checkins/{id}/notify", h.SendParentMessage)
 		r.Post("/api/admin/sync", h.SyncCT)
 	})
 
@@ -112,10 +114,22 @@ func main() {
 	// Parent-facing routes (require parent token embedded in URL path)
 	r.Get("/api/parent/{token}", h.GetParentCheckinPage)
 	r.Get("/api/parent/{token}/qr", h.GetParentQR)
+	r.Get("/api/parent/{token}/manifest.json", h.GetParentManifest)
 	r.Post("/api/parent/{token}/register/{childId}", h.RegisterChild)
+	r.Post("/api/parent/{token}/push-subscription", h.SavePushSubscription)
+
+	// Public: VAPID public key for push subscription setup
+	r.Get("/api/push/vapid-public-key", h.GetVAPIDPublicKey)
 
 	// Admin auth — exchange a known admin password for a short-lived JWT
 	r.Post("/api/auth/admin", h.AdminLogin)
+
+	// Serve frontend SPA for any path not matched by API routes above.
+	staticDir := getEnv("FRONTEND_DIST_PATH", "/app/static")
+	if _, err := os.Stat(staticDir); err == nil {
+		slog.Info("serving frontend", "dir", staticDir)
+		r.Handle("/*", spaHandler(staticDir))
+	}
 
 	port := getEnv("BACKEND_API_PORT", "8080")
 	slog.Info("server listening", "port", port)
@@ -139,4 +153,19 @@ func getEnv(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+// spaHandler serves files from staticDir and falls back to index.html for
+// any path that doesn't match a real file (Vue Router history-mode support).
+func spaHandler(staticDir string) http.Handler {
+	fileServer := http.FileServer(http.Dir(staticDir))
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// filepath.Join cleans the path and prevents directory traversal.
+		absPath := filepath.Join(staticDir, filepath.Clean("/"+r.URL.Path))
+		if _, err := os.Stat(absPath); os.IsNotExist(err) {
+			http.ServeFile(w, r, filepath.Join(staticDir, "index.html"))
+			return
+		}
+		fileServer.ServeHTTP(w, r)
+	})
 }

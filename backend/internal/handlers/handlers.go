@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
 	"strconv"
 	"time"
 
+	webpush "github.com/SherClockHolmes/webpush-go"
 	"github.com/ccf/check-in/backend/internal/auth"
 	"github.com/ccf/check-in/backend/internal/ct"
 	"github.com/ccf/check-in/backend/internal/ctsync"
@@ -27,6 +29,8 @@ type Handler struct {
 	frontendBase       string
 	adminPassword      string
 	superAdminPassword string
+	vapidPrivateKey    string
+	vapidPublicKey     string
 }
 
 func New(ctClient *ct.Client, database *gorm.DB, syncSvc *ctsync.Service, jwtSecret []byte, frontendBase string) *Handler {
@@ -38,6 +42,8 @@ func New(ctClient *ct.Client, database *gorm.DB, syncSvc *ctsync.Service, jwtSec
 		frontendBase:       frontendBase,
 		adminPassword:      os.Getenv("ADMIN_PASSWORD"),
 		superAdminPassword: os.Getenv("SUPER_ADMIN_PASSWORD"),
+		vapidPrivateKey:    os.Getenv("VAPID_PRIVATE_KEY"),
+		vapidPublicKey:     os.Getenv("VAPID_PUBLIC_KEY"),
 	}
 }
 
@@ -495,7 +501,8 @@ func (h *Handler) CheckInAtGroup(w http.ResponseWriter, r *http.Request) {
 type childWithStatus struct {
 	ct.Child
 	// Status is "" (not registered today), "pending", "registered", or "checked_in".
-	Status string `json:"status"`
+	Status         string     `json:"status"`
+	LastNotifiedAt *time.Time `json:"lastNotifiedAt"`
 }
 
 // GetParentQR returns a QR code PNG for the parent's own check-in URL.
@@ -551,11 +558,13 @@ func (h *Handler) GetParentCheckinPage(w http.ResponseWriter, r *http.Request) {
 	for _, child := range children {
 		var record localdb.CheckIn
 		status := ""
+		var lastNotifiedAt *time.Time
 		if err := h.db.Where("event_date = ? AND child_id = ?", localdb.Today(), child.ID).
 			First(&record).Error; err == nil {
 			status = record.Status
+			lastNotifiedAt = record.LastNotifiedAt
 		}
-		withStatus = append(withStatus, childWithStatus{Child: child, Status: status})
+		withStatus = append(withStatus, childWithStatus{Child: child, Status: status, LastNotifiedAt: lastNotifiedAt})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"parent": parent, "children": withStatus})
 }
@@ -688,4 +697,158 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
+}
+
+// ── Web Push ──────────────────────────────────────────────────────────────
+
+// GetVAPIDPublicKey returns the server's VAPID public key so the browser can
+// subscribe to push notifications.
+func (h *Handler) GetVAPIDPublicKey(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]string{"publicKey": h.vapidPublicKey})
+}
+
+// GetParentManifest returns a Web App Manifest with start_url set to the
+// parent's own check-in URL. This ensures that "Add to Home Screen" on iOS
+// launches directly into the parent's check-in page, not the admin login.
+// GET /api/parent/{token}/manifest.json
+func (h *Handler) GetParentManifest(w http.ResponseWriter, r *http.Request) {
+	token := chi.URLParam(r, "token")
+	if _, err := auth.ValidateParentToken(h.jwtSecret, token); err != nil {
+		http.Error(w, "invalid token", http.StatusUnauthorized)
+		return
+	}
+	manifest := map[string]any{
+		"name":             "Kinder Check-in",
+		"short_name":       "Check-in",
+		"description":      "Kinder Anmeldung CCF",
+		"start_url":        "/checkin/" + token,
+		"scope":            "/",
+		"display":          "standalone",
+		"background_color": "#f9fafb",
+		"theme_color":      "#2563eb",
+		"icons": []map[string]string{
+			{"src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable"},
+		},
+	}
+	w.Header().Set("Content-Type", "application/manifest+json")
+	w.Header().Set("Cache-Control", "no-store")
+	_ = json.NewEncoder(w).Encode(manifest)
+}
+
+// SavePushSubscription stores (or updates) a Web Push subscription for the parent
+// identified by the URL token.
+// POST /api/parent/{token}/push-subscription
+func (h *Handler) SavePushSubscription(w http.ResponseWriter, r *http.Request) {
+	token := chi.URLParam(r, "token")
+	claims, err := auth.ValidateParentToken(h.jwtSecret, token)
+	if err != nil {
+		http.Error(w, "invalid token", http.StatusUnauthorized)
+		return
+	}
+
+	var body struct {
+		Endpoint string `json:"endpoint"`
+		P256dh   string `json:"p256dh"`
+		Auth     string `json:"auth"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Endpoint == "" {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+
+	sub := localdb.PushSubscription{
+		ParentID: claims.ParentID,
+		Endpoint: body.Endpoint,
+		P256dh:   body.P256dh,
+		Auth:     body.Auth,
+	}
+	// Upsert: update keys if endpoint already known.
+	if err := h.db.
+		Where(localdb.PushSubscription{Endpoint: body.Endpoint}).
+		Assign(localdb.PushSubscription{ParentID: claims.ParentID, P256dh: body.P256dh, Auth: body.Auth}).
+		FirstOrCreate(&sub).Error; err != nil {
+		http.Error(w, "db error", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// SendParentMessage sends a Web Push notification to all subscribed devices of
+// the parent linked to the given checkin record.
+// POST /api/admin/checkins/{id}/notify (requires admin JWT)
+func (h *Handler) SendParentMessage(w http.ResponseWriter, r *http.Request) {
+	if h.vapidPrivateKey == "" || h.vapidPublicKey == "" {
+		http.Error(w, "push not configured", http.StatusNotImplemented)
+		return
+	}
+
+	idStr := chi.URLParam(r, "id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		http.Error(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+
+	var record localdb.CheckIn
+	if err := h.db.First(&record, id).Error; err != nil {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+
+	var subs []localdb.PushSubscription
+	if err := h.db.Where("parent_id = ?", record.ParentID).Find(&subs).Error; err != nil || len(subs) == 0 {
+		http.Error(w, "no subscription found", http.StatusNotFound)
+		return
+	}
+
+	payload, _ := json.Marshal(map[string]string{
+		"title": "Bitte zum Kind kommen",
+		"body":  fmt.Sprintf("Bitte komm zu %s %s in %s.", record.FirstName, record.LastName, record.GroupName),
+	})
+
+	var lastErr error
+	sent := 0
+	for _, sub := range subs {
+		resp, err := webpush.SendNotification(payload, &webpush.Subscription{
+			Endpoint: sub.Endpoint,
+			Keys: webpush.Keys{
+				P256dh: sub.P256dh,
+				Auth:   sub.Auth,
+			},
+		}, &webpush.Options{
+			VAPIDPublicKey:  h.vapidPublicKey,
+			VAPIDPrivateKey: h.vapidPrivateKey,
+			Subscriber:      h.frontendBase,
+			TTL:             86400,
+		})
+		if err != nil {
+			slog.Warn("push send failed", "endpoint", sub.Endpoint, "err", err)
+			lastErr = err
+			continue
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		slog.Info("push response", "status", resp.StatusCode, "body", string(body), "endpoint", sub.Endpoint)
+		if resp.StatusCode == http.StatusGone {
+			// Subscription expired — remove it.
+			h.db.Delete(&sub)
+		} else if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+			sent++
+		} else {
+			lastErr = fmt.Errorf("push service returned %d: %s", resp.StatusCode, string(body))
+		}
+	}
+
+	if sent == 0 {
+		msg := "keine aktive Subscription gefunden"
+		if lastErr != nil {
+			msg = lastErr.Error()
+		}
+		http.Error(w, msg, http.StatusBadGateway)
+		return
+	}
+	now := time.Now()
+	record.LastNotifiedAt = &now
+	h.db.Save(&record)
+	writeJSON(w, http.StatusOK, map[string]any{"sent": sent})
 }

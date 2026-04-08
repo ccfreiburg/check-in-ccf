@@ -54,19 +54,11 @@
         </div>
 
         <!-- Confirm & generate QR -->
-        <div v-if="!qrBlob && qrChildId != null" class="text-center">
-          <button
-            @click="generateQR"
-            :disabled="qrLoading"
-            class="w-full bg-green-600 text-white rounded-xl py-4 text-base font-semibold hover:bg-green-700 disabled:opacity-50 transition"
-          >
-            {{ qrLoading ? 'Generating…' : 'Confirm & Show QR Code' }}
-          </button>
-          <p v-if="qrError" class="text-red-500 text-sm mt-2">{{ qrError }}</p>
-        </div>
+        <div v-if="qrLoading" class="text-center text-gray-400 py-4">QR Code wird generiert…</div>
+        <p v-if="qrError" class="text-red-500 text-sm text-center">{{ qrError }}</p>
 
         <!-- QR code display -->
-        <div v-else class="flex flex-col items-center gap-4">
+        <div v-if="qrBlob" class="flex flex-col items-center gap-4">
           <div class="bg-white rounded-2xl shadow-sm p-4">
             <img :src="qrBlobUrl" alt="QR Code" class="w-64 h-64 object-contain" />
           </div>
@@ -131,6 +123,8 @@ onMounted(async () => {
     detail.value = byParent
       ? await getParentDetailByParentId(routeId)
       : await getParentDetail(routeId)
+    // Auto-generate QR code immediately
+    await generateQR()
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Failed to load parent'
   } finally {
