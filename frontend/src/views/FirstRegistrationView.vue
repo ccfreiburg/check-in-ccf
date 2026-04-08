@@ -11,41 +11,39 @@
         class="w-full border border-gray-300 rounded-xl px-4 py-3 text-base mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500"
       />
 
-      <!-- Group filter labels -->
-      <div v-if="groups.length > 0" class="flex flex-wrap gap-2 mb-2">
+      <!-- Collapsible filters -->
+      <div class="flex items-center gap-2 mb-3">
         <button
-          v-for="g in groups"
-          :key="g.ID"
-          @click="toggleGroup(g.ID)"
-          :class="activeGroups.has(g.ID)
-            ? 'bg-blue-600 text-white border-blue-600'
-            : 'bg-white text-gray-600 border-gray-300 hover:border-blue-400'"
-          class="px-3 py-1 rounded-full border text-sm font-medium transition"
+          @click="filtersOpen = !filtersOpen"
+          class="flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-gray-900 transition"
         >
-          {{ g.Name }}
+          <span>Filter</span>
+          <span v-if="!filtersOpen" class="text-gray-400 font-normal">{{ filterSummary }}</span>
+          <span v-if="activeFilterCount > 0" class="bg-blue-600 text-white text-xs font-semibold px-2 py-0.5 rounded-full">{{ activeFilterCount }}</span>
+          <span class="text-gray-400">{{ filtersOpen ? '▲' : '▼' }}</span>
         </button>
+        <button
+          v-if="activeFilterCount > 0"
+          @click="clearFilters"
+          class="text-gray-400 hover:text-gray-700 transition text-lg leading-none"
+          title="Filter löschen"
+        >&times;</button>
       </div>
 
-      <!-- Parent sex filter labels -->
-      <div class="flex flex-wrap gap-2 mb-4">
-        <button
-          @click="toggleSex('male')"
-          :class="activeSexes.has('male')
-            ? 'bg-indigo-600 text-white border-indigo-600'
-            : 'bg-white text-gray-600 border-gray-300 hover:border-indigo-400'"
-          class="px-3 py-1 rounded-full border text-sm font-medium transition"
-        >
-          Väter
-        </button>
-        <button
-          @click="toggleSex('female')"
-          :class="activeSexes.has('female')
-            ? 'bg-pink-600 text-white border-pink-600'
-            : 'bg-white text-gray-600 border-gray-300 hover:border-pink-400'"
-          class="px-3 py-1 rounded-full border text-sm font-medium transition"
-        >
-          Mütter
-        </button>
+      <div v-if="filtersOpen" class="space-y-2 mb-4">
+        <FilterLabels
+          v-if="groups.length > 0"
+          :items="groups.map(g => ({ value: g.ID, label: g.Name }))"
+          v-model="activeGroupsSet"
+        />
+        <FilterLabels
+          :items="[
+            { value: 'male',   label: 'Väter' },
+            { value: 'female', label: 'Mütter' },
+          ]"
+          v-model="activeSexSet"
+          active-class="bg-gray-700 text-white"
+        />
       </div>
 
       <!-- Loading / error -->
@@ -110,6 +108,7 @@ import { listChildren, listParents, listGroups, ApiError } from '../api'
 import { useAuthStore } from '../stores/auth'
 import type { Child, Parent } from '../api/types'
 import AdminNav from '../components/AdminNav.vue'
+import FilterLabels from '../components/FilterLabels.vue'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -117,30 +116,36 @@ const auth = useAuthStore()
 const children = ref<Child[]>([])
 const allParents = ref<Parent[]>([])
 const groups = ref<{ ID: number; Name: string }[]>([])
-const activeGroups = ref<Set<number>>(new Set())
-const activeSexes = ref<Set<string>>(new Set())
+const activeGroupsSet = ref(new Set<number>())
+const activeSexSet = ref(new Set<string>())
+const filtersOpen = ref(false)
+
+const activeFilterCount = computed(() => activeGroupsSet.value.size + activeSexSet.value.size)
+
+const filterSummary = computed(() => {
+  const parts: string[] = []
+  if (activeGroupsSet.value.size === 1) {
+    const g = groups.value.find(g => activeGroupsSet.value.has(g.ID))
+    if (g) parts.push(g.Name)
+  } else if (activeGroupsSet.value.size > 1) parts.push('Mehrere Gruppen')
+  if (activeSexSet.value.has('male') && !activeSexSet.value.has('female')) parts.push('Väter')
+  else if (activeSexSet.value.has('female') && !activeSexSet.value.has('male')) parts.push('Mütter')
+  else if (activeSexSet.value.size === 2) parts.push('Väter & Mütter')
+  return parts.join(' · ')
+})
+
+function clearFilters() {
+  activeGroupsSet.value = new Set()
+  activeSexSet.value = new Set()
+}
 const search = ref('')
 const loading = ref(true)
 const error = ref('')
 
-function toggleGroup(id: number) {
-  const next = new Set(activeGroups.value)
-  if (next.has(id)) next.delete(id)
-  else next.add(id)
-  activeGroups.value = next
-}
-
-function toggleSex(sex: string) {
-  const next = new Set(activeSexes.value)
-  if (next.has(sex)) next.delete(sex)
-  else next.add(sex)
-  activeSexes.value = next
-}
-
 const filteredChildren = computed(() => {
   let list = children.value
-  if (activeGroups.value.size > 0) {
-    list = list.filter((c) => c.groupId != null && activeGroups.value.has(c.groupId))
+  if (activeGroupsSet.value.size > 0) {
+    list = list.filter((c) => c.groupId != null && activeGroupsSet.value.has(c.groupId))
   }
   const q = search.value.toLowerCase()
   if (!q) return list
@@ -154,15 +159,13 @@ const filteredChildren = computed(() => {
 const filteredParents = computed(() => {
   let list = allParents.value
 
-  // Sex filter
-  const hasMale = activeSexes.value.has('male')
-  const hasFemale = activeSexes.value.has('female')
+  const hasMale = activeSexSet.value.has('male')
+  const hasFemale = activeSexSet.value.has('female')
   if (hasMale && !hasFemale) list = list.filter((p) => p.sex === 'male')
   else if (hasFemale && !hasMale) list = list.filter((p) => p.sex === 'female')
 
-  // Group filter
-  if (activeGroups.value.size > 0) {
-    list = list.filter((p) => p.groups.some((g) => activeGroups.value.has(g.id)))
+  if (activeGroupsSet.value.size > 0) {
+    list = list.filter((p) => p.groups.some((g) => activeGroupsSet.value.has(g.id)))
   }
 
   const q = search.value.toLowerCase()
@@ -174,7 +177,7 @@ const filteredParents = computed(() => {
   )
 })
 
-const showParents = computed(() => activeSexes.value.size > 0)
+const showParents = computed(() => activeSexSet.value.size > 0)
 
 // Parents with no sex set — shown as a resync hint
 const noSexData = computed(

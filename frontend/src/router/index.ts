@@ -40,6 +40,16 @@ const router = createRouter({
       meta: { requiresAuth: true },
     },
     {
+      path: '/admin/tags',
+      component: () => import('../views/TagHandoutView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
+      path: '/admin/settings',
+      component: () => import('../views/AdminView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
       path: '/admin/checkins/:id',
       component: () => import('../views/ChildDetailView.vue'),
       meta: { requiresAuth: true },

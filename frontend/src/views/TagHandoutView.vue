@@ -1,23 +1,19 @@
 <template>
   <div class="min-h-screen bg-gray-50">
-    <AdminNav title="Kinder heute" @logout="logout" />
+    <AdminNav title="Namensschildausgabe" @logout="logout" />
 
     <div class="max-w-2xl mx-auto px-4 py-6 space-y-4">
       <div v-if="loading" class="text-center text-gray-400 py-12">Wird geladen…</div>
       <div v-else-if="error" class="text-center text-red-500 py-12">{{ error }}</div>
 
       <template v-else>
-        <CheckinFilters :records="records" v-slot="{ filtered }">
+        <CheckinFilters :records="records" :default-tag-filters="[false]" v-slot="{ filtered }">
           <ChildList
             :items="filtered.map(toCardItem)"
             :busy="busy"
-            :variant="auth.isSuperAdmin ? 'super' : 'group'"
-            empty-text="Keine Kinder in dieser Auswahl."
+            variant="door"
+            empty-text="Heute noch keine Anmeldungen."
             @confirm-tag="handleConfirmTag"
-            @check-in="handleCheckIn"
-            @notify="handleDetail"
-            @override="handleOverride"
-            @detail="handleDetail"
           />
         </CheckinFilters>
       </template>
@@ -28,7 +24,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { listCheckins, confirmTagHandout, checkInAtGroup, setCheckInStatus, ApiError } from '../api'
+import { listCheckins, confirmTagHandout, ApiError } from '../api'
 import { useAuthStore } from '../stores/auth'
 import type { CheckInRecord } from '../api/types'
 import type { ChildCardItem } from '../utils/status'
@@ -43,8 +39,6 @@ const records = ref<CheckInRecord[]>([])
 const loading = ref(true)
 const error = ref('')
 const busy = reactive<Record<number, boolean>>({})
-
-// ── Data ──────────────────────────────────────────────────────────────────
 
 function toCardItem(r: CheckInRecord): ChildCardItem {
   return {
@@ -78,8 +72,6 @@ async function load() {
   }
 }
 
-// ── Actions ───────────────────────────────────────────────────────────────
-
 async function handleConfirmTag(item: ChildCardItem) {
   if (busy[item.id]) return
   busy[item.id] = true
@@ -87,42 +79,6 @@ async function handleConfirmTag(item: ChildCardItem) {
     const updated = await confirmTagHandout(item.id)
     const idx = records.value.findIndex(r => r.ID === item.id)
     if (idx !== -1) records.value[idx] = updated
-  } catch (e) {
-    alert(e instanceof Error ? e.message : 'Fehler')
-  } finally {
-    busy[item.id] = false
-  }
-}
-
-async function handleCheckIn(item: ChildCardItem) {
-  if (busy[item.id]) return
-  busy[item.id] = true
-  try {
-    const updated = await checkInAtGroup(item.id)
-    const idx = records.value.findIndex(r => r.ID === item.id)
-    if (idx !== -1) records.value[idx] = updated
-  } catch (e) {
-    alert(e instanceof Error ? e.message : 'Fehler')
-  } finally {
-    busy[item.id] = false
-  }
-}
-
-function handleDetail(item: ChildCardItem) {
-  router.push(`/admin/checkins/${item.id}`)
-}
-
-async function handleOverride(item: ChildCardItem, status: string) {
-  if (busy[item.id]) return
-  busy[item.id] = true
-  try {
-    const result = await setCheckInStatus(item.id, status as never)
-    if ('status' in result && result.status === 'deleted') {
-      records.value = records.value.filter(r => r.ID !== item.id)
-    } else {
-      const idx = records.value.findIndex(r => r.ID === item.id)
-      if (idx !== -1) records.value[idx] = result as CheckInRecord
-    }
   } catch (e) {
     alert(e instanceof Error ? e.message : 'Fehler')
   } finally {

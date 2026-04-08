@@ -55,7 +55,7 @@
       class="w-full font-semibold py-2.5 rounded-xl text-sm disabled:opacity-50 transition"
     >
       <span v-if="busy">Bitte warten…</span>
-      <span v-else>Namensschild {{ item.tagReceived ? 'erhalten ✓' : 'übergeben' }}</span>
+      <span v-else>{{ item.tagReceived ? 'Namensschildausgabe ✓' : 'Namensschildausgabe' }}</span>
     </button>
 
     <!-- group: main action + detail -->
