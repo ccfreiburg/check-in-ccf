@@ -1,4 +1,4 @@
-import type { Child, Parent, CheckInRecord, ParentDetail, ParentCheckinPage, CheckInStatus, EventReport } from './types'
+import type { Child, Parent, Person, CheckInRecord, ParentDetail, ParentCheckinPage, CheckInStatus, EventReport } from './types'
 
 const BASE = '/api'
 
