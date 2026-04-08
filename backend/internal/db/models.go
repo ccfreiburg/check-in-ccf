@@ -47,5 +47,6 @@ type CheckIn struct {
 	TagReceived    bool
 	RegisteredAt   *time.Time // set when TagReceived is first toggled true
 	CheckedInAt    *time.Time
+	CheckedOutAt   *time.Time // set when a volunteer checks the child out (status overridden to "")
 	LastNotifiedAt *time.Time
 }

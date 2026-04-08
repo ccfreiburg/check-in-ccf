@@ -121,6 +121,8 @@ func main() {
 		r.Post("/api/admin/checkins/{id}/notify", h.SendParentMessage)
 		r.Delete("/api/admin/checkins/{id}/notify", h.ClearNotify)
 		r.Post("/api/admin/sync", h.SyncCT)
+		r.Get("/api/admin/reports", h.ListReports)
+		r.Get("/api/admin/reports/{filename}", h.GetReport)
 	})
 
 	// Super-admin routes (require super_admin token)

@@ -130,8 +130,11 @@ export default {
     sync_busy: 'Synchronisiere\u2026',
     sync_button: 'Jetzt synchronisieren',
     sync_success: 'Synchronisierung erfolgreich \u2713',
-    sync_error: 'Fehler beim Synchronisieren',
-  },
+    sync_error: 'Fehler beim Synchronisieren',    reports_heading: 'Veranstaltungsberichte',
+    reports_description: 'CSV-Protokolle aller beendeten Events mit Registrierungs-, Check-in- und Check-out-Zeiten.',
+    reports_empty: 'Noch keine Berichte vorhanden.',
+    reports_download: 'Herunterladen',
+    reports_error: 'Fehler beim Laden der Berichte',  },
 
   // ── ChildCard ─────────────────────────────────────────────────────────────
   child_card: {

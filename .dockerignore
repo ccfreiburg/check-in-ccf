@@ -6,3 +6,4 @@ backend/tmp
 backend/*.db
 backend/.env
 frontend/.env
+backend/reports/**

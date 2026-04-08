@@ -2,12 +2,16 @@ package handlers
 
 import (
 	"context"
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"os"
+	"path/filepath"
+	"regexp"
+	"sort"
 	"strconv"
 	"time"
 
@@ -32,9 +36,14 @@ type Handler struct {
 	superAdminPassword string
 	vapidPrivateKey    string
 	vapidPublicKey     string
+	reportsDir         string
 }
 
 func New(ctClient *ct.Client, database *gorm.DB, syncSvc *ctsync.Service, jwtSecret []byte, frontendBase string) *Handler {
+	reportsDir := os.Getenv("REPORTS_DIR")
+	if reportsDir == "" {
+		reportsDir = "./reports"
+	}
 	return &Handler{
 		ct:                 ctClient,
 		db:                 database,
@@ -46,6 +55,7 @@ func New(ctClient *ct.Client, database *gorm.DB, syncSvc *ctsync.Service, jwtSec
 		superAdminPassword: os.Getenv("SUPER_ADMIN_PASSWORD"),
 		vapidPrivateKey:    os.Getenv("VAPID_PRIVATE_KEY"),
 		vapidPublicKey:     os.Getenv("VAPID_PUBLIC_KEY"),
+		reportsDir:         reportsDir,
 	}
 }
 
@@ -493,9 +503,23 @@ func (h *Handler) ListParents(w http.ResponseWriter, r *http.Request) {
 
 // ListCheckins returns today's check-in records.
 // Optional query params: ?status=pending|registered|checked_in  ?groupId=N
-// EndEvent deletes all today's check-in records (full reset of the event day).
+// EndEvent generates a CSV report for the day, then deletes all today's check-in records.
 func (h *Handler) EndEvent(w http.ResponseWriter, r *http.Request) {
-	if err := h.db.Unscoped().Where("event_date = ?", localdb.Today()).Delete(&localdb.CheckIn{}).Error; err != nil {
+	today := localdb.Today()
+
+	// Load all today's records (Unscoped to include soft-deleted checkout entries).
+	var records []localdb.CheckIn
+	h.db.Unscoped().Where("event_date = ?", today).
+		Order("group_name, last_name, first_name").Find(&records)
+
+	if len(records) > 0 {
+		if err := h.generateReport(today, records); err != nil {
+			slog.Warn("EndEvent: failed to generate report", "err", err)
+			// non-fatal: proceed with deletion
+		}
+	}
+
+	if err := h.db.Unscoped().Where("event_date = ?", today).Delete(&localdb.CheckIn{}).Error; err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -744,7 +768,10 @@ func (h *Handler) SetCheckInStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.Status == "" {
-		if err := h.db.Unscoped().Delete(&record).Error; err != nil {
+		now := time.Now()
+		record.CheckedOutAt = &now
+		h.db.Save(&record) // persist timestamp before soft-delete
+		if err := h.db.Delete(&record).Error; err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -771,6 +798,153 @@ func (h *Handler) SetCheckInStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, record)
+}
+
+// ── Reports ───────────────────────────────────────────────────────────────
+
+// reportFilenameRe validates the safe filename pattern YYYY-MM-DD_NNN.csv.
+var reportFilenameRe = regexp.MustCompile(`^[0-9]{4}-[0-9]{2}-[0-9]{2}_[0-9]{3}\.csv$`)
+
+// generateReport writes a CSV file for the given event date and check-in records.
+func (h *Handler) generateReport(date string, records []localdb.CheckIn) error {
+	if err := os.MkdirAll(h.reportsDir, 0750); err != nil {
+		return fmt.Errorf("create reports dir: %w", err)
+	}
+	seq, err := nextReportSeq(h.reportsDir, date)
+	if err != nil {
+		return err
+	}
+	filename := fmt.Sprintf("%s_%03d.csv", date, seq)
+	path := filepath.Join(h.reportsDir, filename)
+	f, err := os.Create(path)
+	if err != nil {
+		return fmt.Errorf("create report file: %w", err)
+	}
+	defer f.Close()
+
+	// Build parent name lookup.
+	seen := map[int]struct{}{}
+	var parentIDs []int
+	for _, r := range records {
+		if r.ParentID != 0 {
+			if _, ok := seen[r.ParentID]; !ok {
+				seen[r.ParentID] = struct{}{}
+				parentIDs = append(parentIDs, r.ParentID)
+			}
+		}
+	}
+	parentMap := map[int]localdb.SyncedPerson{}
+	if len(parentIDs) > 0 {
+		var parents []localdb.SyncedPerson
+		h.db.Where("ct_id IN ?", parentIDs).Find(&parents)
+		for _, p := range parents {
+			parentMap[p.CTID] = p
+		}
+	}
+
+	fmtDate := func(t *time.Time) string {
+		if t == nil {
+			return ""
+		}
+		return t.Format("2006-01-02")
+	}
+	fmtTime := func(t *time.Time) string {
+		if t == nil {
+			return ""
+		}
+		return t.Format("15:04:05")
+	}
+
+	cw := csv.NewWriter(f)
+	_ = cw.Write([]string{
+		"Gruppe", "Vorname", "Nachname",
+		"Eltern-Vorname", "Eltern-Nachname",
+		"Anmeldedatum", "Anmeldezeit",
+		"Check-in Datum", "Check-in Zeit",
+		"Check-out Datum", "Check-out Zeit",
+	})
+	for _, rec := range records {
+		parent := parentMap[rec.ParentID]
+		_ = cw.Write([]string{
+			rec.GroupName,
+			rec.FirstName, rec.LastName,
+			parent.FirstName, parent.LastName,
+			fmtDate(rec.RegisteredAt), fmtTime(rec.RegisteredAt),
+			fmtDate(rec.CheckedInAt), fmtTime(rec.CheckedInAt),
+			fmtDate(rec.CheckedOutAt), fmtTime(rec.CheckedOutAt),
+		})
+	}
+	cw.Flush()
+	return cw.Error()
+}
+
+// nextReportSeq counts existing CSV files for date and returns the next sequence number.
+func nextReportSeq(dir, date string) (int, error) {
+	matches, err := filepath.Glob(filepath.Join(dir, date+"_*.csv"))
+	if err != nil {
+		return 0, err
+	}
+	return len(matches) + 1, nil
+}
+
+// ListReports returns metadata for all saved event report CSV files, newest first.
+func (h *Handler) ListReports(w http.ResponseWriter, r *http.Request) {
+	type reportEntry struct {
+		Filename string `json:"filename"`
+		Date     string `json:"date"`
+		Size     int64  `json:"size"`
+	}
+
+	entries, err := os.ReadDir(h.reportsDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			writeJSON(w, http.StatusOK, []reportEntry{})
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	result := make([]reportEntry, 0)
+	for _, e := range entries {
+		if e.IsDir() || !reportFilenameRe.MatchString(e.Name()) {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		result = append(result, reportEntry{
+			Filename: e.Name(),
+			Date:     e.Name()[:10],
+			Size:     info.Size(),
+		})
+	}
+	sort.Slice(result, func(i, j int) bool { return result[i].Filename > result[j].Filename })
+	writeJSON(w, http.StatusOK, result)
+}
+
+// GetReport serves a single CSV report file for download.
+func (h *Handler) GetReport(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "filename")
+	if !reportFilenameRe.MatchString(name) {
+		http.Error(w, "invalid filename", http.StatusBadRequest)
+		return
+	}
+	path := filepath.Join(h.reportsDir, name)
+	f, err := os.Open(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer f.Close()
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, name))
+	_, _ = io.Copy(w, f)
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────

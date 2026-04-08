@@ -2,6 +2,7 @@
 backend/.env
 backend/server
 backend/tmp/**
+backend/reports/**
 backend/checkin.db
 
 # Frontend

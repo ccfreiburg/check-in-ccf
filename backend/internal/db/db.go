@@ -23,6 +23,7 @@ func Open(path string) (*gorm.DB, error) {
 	database.Exec(`ALTER TABLE check_ins ADD COLUMN tag_received BOOLEAN NOT NULL DEFAULT false`)
 	database.Exec(`ALTER TABLE check_ins ADD COLUMN registered_at DATETIME`)
 	database.Exec(`ALTER TABLE check_ins ADD COLUMN last_notified_at DATETIME`)
+	database.Exec(`ALTER TABLE check_ins ADD COLUMN checked_out_at DATETIME`)
 
 	if err := database.AutoMigrate(
 		&CheckIn{},

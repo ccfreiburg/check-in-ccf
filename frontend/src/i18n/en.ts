@@ -130,8 +130,11 @@ export default {
     sync_busy: 'Syncing\u2026',
     sync_button: 'Sync now',
     sync_success: 'Sync successful \u2713',
-    sync_error: 'Error syncing',
-  },
+    sync_error: 'Error syncing',    reports_heading: 'Event Reports',
+    reports_description: 'CSV logs of all completed events with registration, check-in, and check-out times.',
+    reports_empty: 'No reports yet.',
+    reports_download: 'Download',
+    reports_error: 'Error loading reports',  },
 
   // ── ChildCard ─────────────────────────────────────────────────────────────
   child_card: {

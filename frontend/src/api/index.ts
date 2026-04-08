@@ -1,4 +1,4 @@
-import type { Child, Parent, CheckInRecord, ParentDetail, ParentCheckinPage, CheckInStatus } from './types'
+import type { Child, Parent, CheckInRecord, ParentDetail, ParentCheckinPage, CheckInStatus, EventReport } from './types'
 
 const BASE = '/api'
 
@@ -153,6 +153,29 @@ export async function listGroups(): Promise<{ ID: number; Name: string }[]> {
   const res = await fetch(`${BASE}/admin/groups`, { headers: authHeaders() })
   const data = await handleResponse<{ ID: number; Name: string }[] | null>(res)
   return data ?? []
+}
+
+// ── Admin: reports ────────────────────────────────────────────────────────
+
+export async function listReports(): Promise<EventReport[]> {
+  const res = await fetch(`${BASE}/admin/reports`, { headers: authHeaders() })
+  const data = await handleResponse<EventReport[] | null>(res)
+  return data ?? []
+}
+
+/** Fetches a report CSV and triggers a browser file download. */
+export async function downloadReport(filename: string): Promise<void> {
+  const res = await fetch(`${BASE}/admin/reports/${encodeURIComponent(filename)}`, {
+    headers: authHeaders(),
+  })
+  if (!res.ok) throw new ApiError(res.status, await res.text())
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
 }
 
 // ── Parent-facing endpoints ───────────────────────────────────────────────

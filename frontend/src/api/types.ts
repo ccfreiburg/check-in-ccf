@@ -65,6 +65,14 @@ export interface CheckInRecord {
   TagReceived: boolean
   RegisteredAt: string | null
   CheckedInAt: string | null
+  CheckedOutAt: string | null
   LastNotifiedAt: string | null
   CreatedAt: string
+}
+
+/** Metadata for a saved event report CSV file. */
+export interface EventReport {
+  filename: string
+  date: string
+  size: number
 }

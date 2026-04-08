@@ -27,7 +27,7 @@ COPY --from=backend-builder /app/server .
 COPY --from=frontend-builder /app/dist ./static
 
 # Pre-create volume subdirectories with correct ownership.
-RUN mkdir -p /data/db /data/logs
+RUN mkdir -p /data/db /data/logs /data/reports
 
 # ── Runtime environment defaults ───────────────────────────────────────────
 # All sensitive values (CT_API_TOKEN, JWT_SECRET, ADMIN_PASSWORD, VAPID_*, …)
@@ -35,6 +35,7 @@ RUN mkdir -p /data/db /data/logs
 ENV FRONTEND_DIST_PATH=/app/static \
     DB_PATH=/data/db/checkin.db \
     LOG_FILE=/data/logs/app.log \
+    REPORTS_DIR=/data/reports \
     BACKEND_API_PORT=8080
 
 # /data is the single persistent volume:

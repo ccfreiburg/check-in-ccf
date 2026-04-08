@@ -56,16 +56,43 @@
           {{ syncMsg }}
         </div>
       </div>
+
+      <!-- Reports -->
+      <div class="bg-white rounded-2xl shadow-sm p-5 space-y-3">
+        <p class="text-sm font-semibold text-gray-700">{{ t('admin.reports_heading') }}</p>
+        <p class="text-sm text-gray-500">{{ t('admin.reports_description') }}</p>
+        <div v-if="reportsError" class="text-sm text-red-600">{{ t('admin.reports_error') }}</div>
+        <p v-else-if="reports.length === 0" class="text-sm text-gray-400 italic">{{ t('admin.reports_empty') }}</p>
+        <ul v-else class="divide-y divide-gray-100">
+          <li
+            v-for="report in reports"
+            :key="report.filename"
+            class="flex items-center justify-between py-2"
+          >
+            <span class="text-sm text-gray-700 font-mono">{{ report.filename }}</span>
+            <button
+              @click="handleDownload(report.filename)"
+              class="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800 transition"
+            >
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5m0 0l5-5m-5 5V4" />
+              </svg>
+              {{ t('admin.reports_download') }}
+            </button>
+          </li>
+        </ul>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
-import { syncCT, endEvent } from '../api'
+import { syncCT, endEvent, listReports, downloadReport } from '../api'
 import { useAuthStore } from '../stores/auth'
+import type { EventReport } from '../api/types'
 import AdminNav from '../components/AdminNav.vue'
 
 const router = useRouter()
@@ -84,6 +111,7 @@ async function confirmEndEvent() {
   try {
     await endEvent()
     endMsg.value = t('admin.end_event_success')
+    await loadReports()
   } catch (e) {
     endMsg.value = e instanceof Error ? e.message : t('admin.end_event_error')
   } finally {
@@ -114,6 +142,28 @@ async function doSync() {
     msgTimer = setTimeout(() => { syncMsg.value = '' }, 4000)
   }
 }
+
+const reports = ref<EventReport[]>([])
+const reportsError = ref(false)
+
+async function loadReports() {
+  reportsError.value = false
+  try {
+    reports.value = await listReports()
+  } catch {
+    reportsError.value = true
+  }
+}
+
+async function handleDownload(filename: string) {
+  try {
+    await downloadReport(filename)
+  } catch (e) {
+    alert(e instanceof Error ? e.message : t('admin.reports_error'))
+  }
+}
+
+onMounted(loadReports)
 
 function logout() {
   auth.logout()
