@@ -3,6 +3,26 @@
     <AdminNav title="Admin" @logout="logout" />
 
     <div class="max-w-2xl mx-auto px-4 py-6 space-y-4">
+      <!-- End event -->
+      <div class="bg-white rounded-2xl shadow-sm p-5 space-y-3">
+        <p class="text-sm font-semibold text-gray-700">Event beenden</p>
+        <p class="text-sm text-gray-500">Alle heutigen Check-in-Einträge werden gelöscht. Dies kann nicht rückgängig gemacht werden.</p>
+        <button
+          @click="confirmEndEvent"
+          :disabled="ending"
+          class="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white font-semibold px-5 py-2.5 rounded-xl text-sm disabled:opacity-50 transition"
+        >
+          {{ ending ? 'Wird beendet…' : 'Event beenden' }}
+        </button>
+        <div
+          v-if="endMsg"
+          :class="endError ? 'bg-red-50 border-red-200 text-red-700' : 'bg-green-50 border-green-200 text-green-700'"
+          class="text-sm border rounded-xl px-4 py-2"
+        >
+          {{ endMsg }}
+        </div>
+      </div>
+
       <!-- Sync -->
       <div class="bg-white rounded-2xl shadow-sm p-5 space-y-3">
         <p class="text-sm font-semibold text-gray-700">ChurchTools Synchronisierung</p>
@@ -43,12 +63,32 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { syncCT } from '../api'
+import { syncCT, endEvent } from '../api'
 import { useAuthStore } from '../stores/auth'
 import AdminNav from '../components/AdminNav.vue'
 
 const router = useRouter()
 const auth = useAuthStore()
+
+const ending = ref(false)
+const endMsg = ref('')
+const endError = ref(false)
+
+async function confirmEndEvent() {
+  if (!confirm('Wirklich alle heutigen Check-ins löschen?')) return
+  ending.value = true
+  endMsg.value = ''
+  endError.value = false
+  try {
+    await endEvent()
+    endMsg.value = 'Event beendet – alle Einträge gelöscht ✓'
+  } catch (e) {
+    endMsg.value = e instanceof Error ? e.message : 'Fehler'
+    endError.value = true
+  } finally {
+    ending.value = false
+  }
+}
 
 const syncing = ref(false)
 const syncMsg = ref('')

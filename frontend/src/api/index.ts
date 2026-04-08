@@ -91,6 +91,14 @@ export async function generateQR(parentId: number): Promise<{ blob: Blob; url: s
 
 // ── Admin: check-in management ────────────────────────────────────────────
 
+export async function endEvent(): Promise<void> {
+  const res = await fetch(`${BASE}/admin/checkins/end-event`, {
+    method: 'POST',
+    headers: authHeaders(),
+  })
+  await handleResponse<unknown>(res)
+}
+
 export async function listCheckins(
   opts: { status?: string; groupId?: number } = {},
 ): Promise<CheckInRecord[]> {

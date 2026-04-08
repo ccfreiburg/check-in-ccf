@@ -459,6 +459,15 @@ func (h *Handler) ListParents(w http.ResponseWriter, r *http.Request) {
 
 // ListCheckins returns today's check-in records.
 // Optional query params: ?status=pending|registered|checked_in  ?groupId=N
+// EndEvent deletes all today's check-in records (full reset of the event day).
+func (h *Handler) EndEvent(w http.ResponseWriter, r *http.Request) {
+	if err := h.db.Where("event_date = ?", localdb.Today()).Delete(&localdb.CheckIn{}).Error; err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
 func (h *Handler) ListCheckins(w http.ResponseWriter, r *http.Request) {
 	q := h.db.Where("event_date = ?", localdb.Today())
 	if s := r.URL.Query().Get("status"); s != "" {

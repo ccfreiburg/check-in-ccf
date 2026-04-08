@@ -100,6 +100,7 @@ func main() {
 		r.Get("/api/admin/parents", h.ListParents)
 		r.Get("/api/admin/parents/{id}", h.GetParentDetailByParentID)
 		r.Get("/api/admin/checkins", h.ListCheckins)
+		r.Post("/api/admin/checkins/end-event", h.EndEvent)
 		r.Post("/api/admin/checkins/{id}/confirm", h.ConfirmTagHandout)
 		r.Post("/api/admin/checkins/{id}/checkin", h.CheckInAtGroup)
 		r.Post("/api/admin/checkins/{id}/notify", h.SendParentMessage)
