@@ -1,6 +1,11 @@
 <template>
   <div>
-    <ul v-if="items.length > 0" class="space-y-3">
+    <TransitionGroup
+      v-if="items.length > 0"
+      tag="ul"
+      name="list"
+      class="relative space-y-3"
+    >
       <li v-for="item in items" :key="item.id">
         <ChildCard
           :item="item"
@@ -14,7 +19,7 @@
           @detail="emit('detail', item)"
         />
       </li>
-    </ul>
+    </TransitionGroup>
     <p v-else class="text-center text-gray-400 py-10">
       {{ emptyText ?? 'Keine Einträge.' }}
     </p>
@@ -41,3 +46,23 @@ const emit = defineEmits<{
   detail: [item: ChildCardItem]
 }>()
 </script>
+
+<style scoped>
+.list-move,
+.list-enter-active {
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+.list-leave-active {
+  transition: opacity 0.25s ease, transform 0.25s ease;
+  position: absolute;
+  width: 100%;
+}
+.list-enter-from {
+  opacity: 0;
+  transform: translateY(-10px);
+}
+.list-leave-to {
+  opacity: 0;
+  transform: translateY(6px) scale(0.98);
+}
+</style>

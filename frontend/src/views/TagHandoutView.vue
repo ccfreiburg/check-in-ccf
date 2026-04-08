@@ -22,22 +22,23 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { reactive } from 'vue'
 import { useRouter } from 'vue-router'
-import { listCheckins, confirmTagHandout, ApiError } from '../api'
+import { confirmTagHandout } from '../api'
 import { useAuthStore } from '../stores/auth'
 import type { CheckInRecord } from '../api/types'
 import type { ChildCardItem } from '../utils/status'
 import AdminNav from '../components/AdminNav.vue'
 import CheckinFilters from '../components/CheckinFilters.vue'
 import ChildList from '../components/ChildList.vue'
+import { useLiveCheckins } from '../composables/useLiveCheckins'
 
 const router = useRouter()
 const auth = useAuthStore()
 
-const records = ref<CheckInRecord[]>([])
-const loading = ref(true)
-const error = ref('')
+const { records, loading, error } = useLiveCheckins({
+  onAuthError: () => { auth.logout(); router.push('/login') },
+})
 const busy = reactive<Record<number, boolean>>({})
 
 function toCardItem(r: CheckInRecord): ChildCardItem {
@@ -54,31 +55,13 @@ function toCardItem(r: CheckInRecord): ChildCardItem {
   }
 }
 
-onMounted(load)
-
-async function load() {
-  loading.value = true
-  error.value = ''
-  try {
-    records.value = (await listCheckins()).sort((a, b) => a.CreatedAt.localeCompare(b.CreatedAt))
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Fehler beim Laden'
-    if (e instanceof ApiError && e.isAuthError) {
-      auth.logout()
-      router.push('/login')
-    }
-  } finally {
-    loading.value = false
-  }
-}
-
 async function handleConfirmTag(item: ChildCardItem) {
   if (busy[item.id]) return
   busy[item.id] = true
   try {
     const updated = await confirmTagHandout(item.id)
-    const idx = records.value.findIndex(r => r.ID === item.id)
-    if (idx !== -1) records.value[idx] = updated
+    const ex = records.value.find(r => r.ID === item.id)
+    if (ex) Object.assign(ex, updated)
   } catch (e) {
     alert(e instanceof Error ? e.message : 'Fehler')
   } finally {

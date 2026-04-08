@@ -26,22 +26,23 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { reactive } from 'vue'
 import { useRouter } from 'vue-router'
-import { listCheckins, confirmTagHandout, checkInAtGroup, setCheckInStatus, ApiError } from '../api'
+import { confirmTagHandout, checkInAtGroup, setCheckInStatus } from '../api'
 import { useAuthStore } from '../stores/auth'
 import type { CheckInRecord } from '../api/types'
 import type { ChildCardItem } from '../utils/status'
 import AdminNav from '../components/AdminNav.vue'
 import CheckinFilters from '../components/CheckinFilters.vue'
 import ChildList from '../components/ChildList.vue'
+import { useLiveCheckins } from '../composables/useLiveCheckins'
 
 const router = useRouter()
 const auth = useAuthStore()
 
-const records = ref<CheckInRecord[]>([])
-const loading = ref(true)
-const error = ref('')
+const { records, loading, error } = useLiveCheckins({
+  onAuthError: () => { auth.logout(); router.push('/login') },
+})
 const busy = reactive<Record<number, boolean>>({})
 
 // ── Data ──────────────────────────────────────────────────────────────────
@@ -60,24 +61,6 @@ function toCardItem(r: CheckInRecord): ChildCardItem {
   }
 }
 
-onMounted(load)
-
-async function load() {
-  loading.value = true
-  error.value = ''
-  try {
-    records.value = (await listCheckins()).sort((a, b) => a.CreatedAt.localeCompare(b.CreatedAt))
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Fehler beim Laden'
-    if (e instanceof ApiError && e.isAuthError) {
-      auth.logout()
-      router.push('/login')
-    }
-  } finally {
-    loading.value = false
-  }
-}
-
 // ── Actions ───────────────────────────────────────────────────────────────
 
 async function handleConfirmTag(item: ChildCardItem) {
@@ -85,8 +68,8 @@ async function handleConfirmTag(item: ChildCardItem) {
   busy[item.id] = true
   try {
     const updated = await confirmTagHandout(item.id)
-    const idx = records.value.findIndex(r => r.ID === item.id)
-    if (idx !== -1) records.value[idx] = updated
+    const ex = records.value.find(r => r.ID === item.id)
+    if (ex) Object.assign(ex, updated)
   } catch (e) {
     alert(e instanceof Error ? e.message : 'Fehler')
   } finally {
@@ -99,8 +82,8 @@ async function handleCheckIn(item: ChildCardItem) {
   busy[item.id] = true
   try {
     const updated = await checkInAtGroup(item.id)
-    const idx = records.value.findIndex(r => r.ID === item.id)
-    if (idx !== -1) records.value[idx] = updated
+    const ex = records.value.find(r => r.ID === item.id)
+    if (ex) Object.assign(ex, updated)
   } catch (e) {
     alert(e instanceof Error ? e.message : 'Fehler')
   } finally {
@@ -118,10 +101,11 @@ async function handleOverride(item: ChildCardItem, status: string) {
   try {
     const result = await setCheckInStatus(item.id, status as never)
     if ('status' in result && result.status === 'deleted') {
-      records.value = records.value.filter(r => r.ID !== item.id)
-    } else {
       const idx = records.value.findIndex(r => r.ID === item.id)
-      if (idx !== -1) records.value[idx] = result as CheckInRecord
+      if (idx !== -1) records.value.splice(idx, 1)
+    } else {
+      const ex = records.value.find(r => r.ID === item.id)
+      if (ex) Object.assign(ex, result as CheckInRecord)
     }
   } catch (e) {
     alert(e instanceof Error ? e.message : 'Fehler')

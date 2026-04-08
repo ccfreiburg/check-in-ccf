@@ -109,13 +109,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
-import { getParentPage, registerChild } from '../api'
+import { registerChild } from '../api'
 import { subscribeToPush } from '../utils/push'
-import type { ParentCheckinPage, ChildWithStatus } from '../api/types'
+import type { ChildWithStatus } from '../api/types'
 import type { ChildCardItem } from '../utils/status'
 import ChildList from '../components/ChildList.vue'
+import { useLiveParentPage } from '../composables/useLiveParentPage'
 
 const pageUrl = window.location.href
 
@@ -141,10 +142,15 @@ async function installPwa() {
   if (outcome === 'accepted') installPrompt.value = null
 }
 
-const page = ref<ParentCheckinPage | null>(null)
+const { page, loading, error } = useLiveParentPage(token)
+
+// Persist token and init push once the page first loads.
+onMounted(() => localStorage.setItem('parentToken', token))
+const _stopWatchPage = watch(page, (p) => {
+  if (p) { initPushState(); _stopWatchPage() }
+})
+
 const showQR = ref(false)
-const loading = ref(true)
-const error = ref('')
 const busy = reactive<Record<number, boolean>>({})
 const flashMsg = ref('')
 let flashTimer: ReturnType<typeof setTimeout> | null = null
@@ -199,18 +205,6 @@ const childItems = computed((): ChildCardItem[] =>
   }))
 )
 
-onMounted(async () => {
-  // Persist the token so the PWA (installed to home screen) can restore the URL.
-  localStorage.setItem('parentToken', token)
-  try {
-    page.value = await getParentPage(token)
-    initPushState()
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Fehler beim Laden'
-  } finally {
-    loading.value = false
-  }
-})
 
 async function shareQR() {
   if (navigator.share) {
