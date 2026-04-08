@@ -4,10 +4,19 @@
       <h1 class="text-2xl font-bold text-center mb-6 text-gray-800">{{ t('login.title') }}</h1>
       <div class="space-y-4">
         <input
+          v-if="!localPassword"
+          v-model="username"
+          type="email"
+          :placeholder="t('login.username_placeholder')"
+          autocomplete="username"
+          @keyup.enter="submit"
+          class="w-full border border-gray-300 rounded-xl px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+        <input
           v-model="password"
           type="password"
           :placeholder="t('login.password_placeholder')"
-          autocomplete="off"
+          autocomplete="current-password"
           @keyup.enter="submit"
           class="w-full border border-gray-300 rounded-xl px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
@@ -34,6 +43,9 @@ const router = useRouter()
 const auth = useAuthStore()
 const { t } = useI18n()
 
+const localPassword = import.meta.env.VITE_LOCAL_PASSWORD === 'true'
+
+const username = ref('')
 const password = ref('')
 const loading = ref(false)
 const error = ref('')
@@ -42,7 +54,7 @@ async function submit() {
   error.value = ''
   loading.value = true
   try {
-    await auth.login(password.value)
+    await auth.login(username.value, password.value)
     router.push('/admin')
   } catch (e) {
     error.value = e instanceof Error ? e.message : t('login.error_fallback')

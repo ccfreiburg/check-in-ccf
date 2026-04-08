@@ -28,11 +28,11 @@ async function handleResponse<T>(res: Response): Promise<T> {
 
 // ── Admin auth ────────────────────────────────────────────────────────────
 
-export async function adminLogin(password: string): Promise<{ token: string; role: string }> {
+export async function adminLogin(username: string, password: string): Promise<{ token: string; role: string }> {
   const res = await fetch(`${BASE}/auth/admin`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ password }),
+    body: JSON.stringify({ username, password }),
   })
   return handleResponse<{ token: string; role: string }>(res)
 }

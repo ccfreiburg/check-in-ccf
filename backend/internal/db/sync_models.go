@@ -39,3 +39,16 @@ type SyncedRelationship struct {
 	ParentCTID int `gorm:"primaryKey;autoIncrement:false;column:parent_ct_id"`
 	ChildCTID  int `gorm:"primaryKey;autoIncrement:false;column:child_ct_id"`
 }
+
+// SyncedStaff stores persons that have a volunteer or admin role derived from
+// their ChurchTools group memberships. Rebuilt on every sync.
+// Role is "admin" (Leiter/Diakon or admin-group member)
+// or "volunteer" (Co-Leiter of a child group).
+type SyncedStaff struct {
+	gorm.Model
+	CTID      int `gorm:"uniqueIndex;column:ct_id"`
+	FirstName string
+	LastName  string
+	Email     string `gorm:"index"`
+	Role      string // "admin" or "volunteer"
+}

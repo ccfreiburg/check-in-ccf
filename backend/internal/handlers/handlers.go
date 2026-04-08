@@ -27,6 +27,7 @@ type Handler struct {
 	syncSvc            *ctsync.Service
 	jwtSecret          []byte
 	frontendBase       string
+	localPassword      bool
 	adminPassword      string
 	superAdminPassword string
 	vapidPrivateKey    string
@@ -40,6 +41,7 @@ func New(ctClient *ct.Client, database *gorm.DB, syncSvc *ctsync.Service, jwtSec
 		syncSvc:            syncSvc,
 		jwtSecret:          jwtSecret,
 		frontendBase:       frontendBase,
+		localPassword:      os.Getenv("LOCAL_PASSWORD") == "true",
 		adminPassword:      os.Getenv("ADMIN_PASSWORD"),
 		superAdminPassword: os.Getenv("SUPER_ADMIN_PASSWORD"),
 		vapidPrivateKey:    os.Getenv("VAPID_PRIVATE_KEY"),
@@ -51,31 +53,63 @@ func New(ctClient *ct.Client, database *gorm.DB, syncSvc *ctsync.Service, jwtSec
 
 func (h *Handler) AdminLogin(w http.ResponseWriter, r *http.Request) {
 	var req struct {
+		Username string `json:"username"`
 		Password string `json:"password"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Password == "" {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
-	if h.superAdminPassword != "" && req.Password == h.superAdminPassword {
-		token, err := auth.NewSuperAdminToken(h.jwtSecret)
-		if err != nil {
-			http.Error(w, "internal server error", http.StatusInternalServerError)
+
+	var role string
+
+	if h.localPassword {
+		// Local-password mode: match against env vars, ignore username.
+		switch {
+		case h.superAdminPassword != "" && req.Password == h.superAdminPassword:
+			role = "admin"
+		case h.adminPassword != "" && req.Password == h.adminPassword:
+			role = "volunteer"
+		default:
+			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]string{"token": token, "role": "admin"})
-		return
+	} else {
+		// ChurchTools auth mode: verify credentials against CT, then look up role.
+		if req.Username == "" {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		ctPersonID, err := h.ct.LoginUser(req.Username, req.Password)
+		if err != nil {
+			slog.Warn("CT login failed", "username", req.Username, "err", err)
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		var staff localdb.SyncedStaff
+		if err := h.db.Where("ct_id = ?", ctPersonID).First(&staff).Error; err != nil {
+			slog.Warn("CT login: authenticated but no staff role assigned", "ctPersonId", ctPersonID)
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		role = staff.Role
 	}
-	if req.Password != h.adminPassword {
-		http.Error(w, "forbidden", http.StatusForbidden)
-		return
+
+	var (
+		token string
+		err   error
+	)
+	switch role {
+	case "admin":
+		token, err = auth.NewSuperAdminToken(h.jwtSecret)
+	default:
+		token, err = auth.NewAdminToken(h.jwtSecret)
 	}
-	token, err := auth.NewAdminToken(h.jwtSecret)
 	if err != nil {
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"token": token, "role": "volunteer"})
+	writeJSON(w, http.StatusOK, map[string]string{"token": token, "role": role})
 }
 
 // ── Admin: ChurchTools views ──────────────────────────────────────────────

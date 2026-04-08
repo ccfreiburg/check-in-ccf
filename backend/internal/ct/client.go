@@ -1,11 +1,13 @@
 package ct
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -408,4 +410,125 @@ func (c *Client) delete(path string) error {
 func (c *Client) setHeaders(req *http.Request) {
 	req.Header.Set("Authorization", "Login "+c.apiToken)
 	req.Header.Set("Accept", "application/json")
+}
+
+// ── Staff / role helpers ──────────────────────────────────────────────────
+
+// GroupMemberEntry holds a member's CT person ID and their classified type.
+type GroupMemberEntry struct {
+	PersonID int
+	TypeName string // "leader", "coleader", "deacon", "member"
+}
+
+// GetGroupMemberTypes fetches and classifies group member types from CT masterdata.
+// Returns a map of typeID → "leader"|"coleader"|"deacon"|"member".
+func (c *Client) GetGroupMemberTypes() (map[int]string, error) {
+	var resp struct {
+		Data struct {
+			GroupMemberTypes []struct {
+				ID   int    `json:"id"`
+				Name string `json:"name"`
+			} `json:"groupMemberTypes"`
+		} `json:"data"`
+	}
+	if err := c.get("/groups/masterdata", &resp); err != nil {
+		return nil, err
+	}
+	m := make(map[int]string, len(resp.Data.GroupMemberTypes))
+	for _, t := range resp.Data.GroupMemberTypes {
+		n := strings.ToLower(t.Name)
+		switch {
+		case strings.Contains(n, "co") && (strings.Contains(n, "leiter") || strings.Contains(n, "leader")):
+			m[t.ID] = "coleader"
+		case strings.Contains(n, "leiter") || strings.Contains(n, "leader"):
+			m[t.ID] = "leader"
+		case strings.Contains(n, "diakon") || strings.Contains(n, "deacon"):
+			m[t.ID] = "deacon"
+		default:
+			m[t.ID] = "member"
+		}
+	}
+	return m, nil
+}
+
+// GetGroupMembersWithTypes fetches all members of a group with their classified type.
+func (c *Client) GetGroupMembersWithTypes(groupID int, types map[int]string) ([]GroupMemberEntry, error) {
+	type memberPage struct {
+		Data []struct {
+			PersonID          int `json:"personId"`
+			GroupMemberTypeID int `json:"groupMemberTypeId"`
+		} `json:"data"`
+		Meta struct {
+			Pagination struct {
+				LastPage int `json:"lastPage"`
+			} `json:"pagination"`
+		} `json:"meta"`
+	}
+	var entries []GroupMemberEntry
+	for page := 1; ; page++ {
+		raw, err := c.getRaw(fmt.Sprintf("/groups/%d/members?page=%d&limit=100", groupID, page))
+		if err != nil {
+			return nil, err
+		}
+		var resp memberPage
+		if err := json.Unmarshal(raw, &resp); err != nil {
+			return nil, fmt.Errorf("members with types unmarshal: %w", err)
+		}
+		for _, m := range resp.Data {
+			typeName := types[m.GroupMemberTypeID]
+			if typeName == "" {
+				typeName = "member"
+			}
+			entries = append(entries, GroupMemberEntry{PersonID: m.PersonID, TypeName: typeName})
+		}
+		if page >= resp.Meta.Pagination.LastPage || len(resp.Data) == 0 {
+			break
+		}
+	}
+	return entries, nil
+}
+
+// LoginUser authenticates a ChurchTools user with email/username and password.
+// Returns the CT person ID on success, or an error if credentials are invalid.
+func (c *Client) LoginUser(username, password string) (int, error) {
+	url := c.baseURL + "/login"
+	body, _ := json.Marshal(map[string]any{
+		"username":    username,
+		"password":    password,
+		"remember_me": false,
+	})
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return 0, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	// No API-token auth header — this is a user-credential login.
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return 0, fmt.Errorf("CT login: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		b, _ := io.ReadAll(resp.Body)
+		slog.Debug("CT login rejected", "status", resp.StatusCode, "body", string(b))
+		return 0, fmt.Errorf("CT login failed: %s", resp.Status)
+	}
+	var result struct {
+		Data struct {
+			UserID   int `json:"userId"`
+			PersonID int `json:"personId"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return 0, fmt.Errorf("CT login decode: %w", err)
+	}
+	id := result.Data.UserID
+	if id == 0 {
+		id = result.Data.PersonID
+	}
+	if id == 0 {
+		return 0, fmt.Errorf("CT login: could not determine person ID from response")
+	}
+	return id, nil
 }

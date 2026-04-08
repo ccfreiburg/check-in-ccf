@@ -9,8 +9,8 @@ export const useAuthStore = defineStore('auth', () => {
   const isLoggedIn = computed(() => !!token.value)
   const isAdmin = computed(() => role.value === 'admin')
 
-  async function login(password: string) {
-    const { token: t, role: r } = await apiAdminLogin(password)
+  async function login(username: string, password: string) {
+    const { token: t, role: r } = await apiAdminLogin(username, password)
     token.value = t
     role.value = r
     localStorage.setItem('adminToken', t)

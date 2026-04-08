@@ -32,8 +32,7 @@ export default {
 
   // ── Login ────────────────────────────────────────────────────────────────
   login: {
-    title: 'Admin Login',
-    password_placeholder: 'Passwort',
+    title: 'Admin Login',    username_placeholder: 'E-Mail (ChurchTools)',    password_placeholder: 'Passwort',
     signing_in: 'Anmelden\u2026',
     sign_in: 'Anmelden',
     error_fallback: 'Anmeldung fehlgeschlagen',

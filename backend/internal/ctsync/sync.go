@@ -28,16 +28,17 @@ type GroupConfig struct {
 // Service syncs ChurchTools data into the local database.
 // It only ever reads from CT; it never writes back to CT.
 type Service struct {
-	ct      *ct.Client
-	db      *gorm.DB
-	groups  []GroupConfig
-	mu      sync.Mutex
-	running bool
+	ct            *ct.Client
+	db            *gorm.DB
+	groups        []GroupConfig
+	adminGroupIDs []int
+	mu            sync.Mutex
+	running       bool
 }
 
 // New creates a new sync Service.
-func New(ctClient *ct.Client, db *gorm.DB, groups []GroupConfig) *Service {
-	return &Service{ct: ctClient, db: db, groups: groups}
+func New(ctClient *ct.Client, db *gorm.DB, groups []GroupConfig, adminGroupIDs []int) *Service {
+	return &Service{ct: ctClient, db: db, groups: groups, adminGroupIDs: adminGroupIDs}
 }
 
 // Groups returns the configured group list.
@@ -244,7 +245,10 @@ func (s *Service) Run(ctx context.Context) error {
 
 	// ── Step 8: save last-sync timestamp ──────────────────────────────────
 	s.db.Save(&localdb.Setting{Key: settingLastSync, Value: start.UTC().Format(time.RFC3339)})
-
+	// ── Step 9: sync staff roles from group memberships ────────────────────────
+	if err := s.syncStaff(ctx); err != nil {
+		slog.Warn("CT sync: staff sync failed (non-fatal)", "err", err)
+	}
 	slog.Info("CT sync: completed",
 		"children", len(childGroups),
 		"parents", len(parentIDs),
@@ -288,4 +292,112 @@ func (s *Service) savePerson(p ct.Person, isChild, isParent bool, sexMap map[int
 			IsParent:    isParent,
 		}).Error
 	})
+}
+
+// syncStaff builds the SyncedStaff table from CT group memberships:
+//   - All members of adminGroupIDs → role "admin"
+//   - Leaders/Deacons of child groups     → role "admin"
+//   - Co-Leaders of child groups          → role "volunteer"
+func (s *Service) syncStaff(ctx context.Context) error {
+	if len(s.adminGroupIDs) == 0 && len(s.groups) == 0 {
+		return nil
+	}
+
+	// Fetch and classify group member types (Leader, Co-Leader, Deacon, …).
+	memberTypes, err := s.ct.GetGroupMemberTypes()
+	if err != nil {
+		return fmt.Errorf("get group member types: %w", err)
+	}
+
+	// staffRoles: ctPersonID → highest-privilege role found so far.
+	staffRoles := map[int]string{}
+	promote := func(id int, role string) {
+		if cur, ok := staffRoles[id]; !ok || (cur == "volunteer" && role == "admin") {
+			staffRoles[id] = role
+		}
+	}
+
+	// Admin groups: every member becomes an admin.
+	for _, gid := range s.adminGroupIDs {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		members, err := s.ct.GetGroupMembersWithTypes(gid, memberTypes)
+		if err != nil {
+			slog.Warn("CT sync: admin group members error", "groupId", gid, "err", err)
+			continue
+		}
+		for _, m := range members {
+			promote(m.PersonID, "admin")
+		}
+	}
+
+	// Child groups: classify by member type.
+	for _, g := range s.groups {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		members, err := s.ct.GetGroupMembersWithTypes(g.ID, memberTypes)
+		if err != nil {
+			slog.Warn("CT sync: child group members role error", "groupId", g.ID, "err", err)
+			continue
+		}
+		for _, m := range members {
+			switch m.TypeName {
+			case "leader", "deacon":
+				promote(m.PersonID, "admin")
+			case "coleader":
+				promote(m.PersonID, "volunteer")
+				// regular members: not staff
+			}
+		}
+	}
+
+	if len(staffRoles) == 0 {
+		s.db.Where("1 = 1").Delete(&localdb.SyncedStaff{})
+		return nil
+	}
+
+	// Bulk fetch person details for all staff.
+	staffIDs := make([]int, 0, len(staffRoles))
+	for id := range staffRoles {
+		staffIDs = append(staffIDs, id)
+	}
+	persons, err := s.ct.GetPersonsBulk(staffIDs)
+	if err != nil {
+		return fmt.Errorf("bulk fetch staff persons: %w", err)
+	}
+
+	// Upsert each staff member.
+	for ctID, role := range staffRoles {
+		p, ok := persons[ctID]
+		if !ok {
+			slog.Warn("CT sync: staff person missing from bulk response", "ctId", ctID)
+			continue
+		}
+		s.db.Transaction(func(tx *gorm.DB) error { //nolint:errcheck
+			var existing localdb.SyncedStaff
+			tx.Where("ct_id = ?", ctID).Limit(1).Find(&existing)
+			if existing.ID != 0 {
+				existing.FirstName = p.FirstName
+				existing.LastName = p.LastName
+				existing.Email = p.Email
+				existing.Role = role
+				return tx.Save(&existing).Error
+			}
+			return tx.Create(&localdb.SyncedStaff{
+				CTID:      ctID,
+				FirstName: p.FirstName,
+				LastName:  p.LastName,
+				Email:     p.Email,
+				Role:      role,
+			}).Error
+		})
+	}
+
+	// Remove entries no longer in any configured group.
+	s.db.Where("ct_id NOT IN ?", staffIDs).Delete(&localdb.SyncedStaff{})
+
+	slog.Info("CT sync: staff synced", "count", len(staffRoles))
+	return nil
 }

@@ -59,7 +59,22 @@ func main() {
 		syncGroups = append(syncGroups, ctsync.GroupConfig{ID: gid, Name: name})
 	}
 
-	syncSvc := ctsync.New(ctClient, database, syncGroups)
+	// Parse admin group IDs from CT_ADMIN_GROUP_IDS (comma-separated).
+	var adminGroupIDs []int
+	for _, raw := range strings.Split(getEnv("CT_ADMIN_GROUP_IDS", ""), ",") {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			continue
+		}
+		gid, err := strconv.Atoi(raw)
+		if err != nil {
+			slog.Error("invalid CT_ADMIN_GROUP_IDS entry", "value", raw)
+			os.Exit(1)
+		}
+		adminGroupIDs = append(adminGroupIDs, gid)
+	}
+
+	syncSvc := ctsync.New(ctClient, database, syncGroups, adminGroupIDs)
 
 	// Auto-sync on startup if data is stale (> 12 h old or never synced).
 	if syncSvc.IsStale() {

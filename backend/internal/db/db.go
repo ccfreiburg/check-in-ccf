@@ -31,6 +31,7 @@ func Open(path string) (*gorm.DB, error) {
 		&SyncedPerson{},
 		&SyncedGroupMembership{},
 		&SyncedRelationship{},
+		&SyncedStaff{},
 	); err != nil {
 		return nil, err
 	}
