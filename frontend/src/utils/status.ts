@@ -15,13 +15,6 @@ export interface ChildCardItem {
   lastNotifiedAt?: string | null
 }
 
-/** Generic tab item for GroupFilterLabels. */
-export interface FilterTab {
-  value: string | number | null
-  label: string
-  count: number
-}
-
 export function statusLabel(s: string): string {
   switch (s) {
     case 'pending':    return 'Angemeldet'

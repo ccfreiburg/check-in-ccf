@@ -202,3 +202,11 @@ export async function sendParentMessage(checkinId: number): Promise<{ sent: numb
   })
   return handleResponse<{ sent: number }>(res)
 }
+
+export async function clearParentNotify(checkinId: number): Promise<CheckInRecord> {
+  const res = await fetch(`${BASE}/admin/checkins/${checkinId}/notify`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  })
+  return handleResponse<CheckInRecord>(res)
+}

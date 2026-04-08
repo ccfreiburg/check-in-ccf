@@ -19,17 +19,30 @@
           <p class="text-blue-800 font-medium">
             Hallo {{ page.parent.firstName }} {{ page.parent.lastName }}
           </p>
-          <p class="text-sm text-blue-600">
-            Wähle ein Kind aus und tippe „Anmelden", um es am Eingang anzumelden.
-          </p>
+          <div class="flex items-center gap-2">
+            <span class="text-xs text-gray-500">Du kannst hier deine Kinder für den heutigen Tag anmelden.</span>
+            <button
+              @click="showQR = !showQR"
+              :class="showQR
+                ? 'bg-blue-600 text-white shadow-inner ring-2 ring-inset ring-blue-800/20'
+                : 'bg-blue-100 text-blue-600 hover:bg-blue-200'"
+              class="p-1.5 rounded-lg transition"
+              :aria-pressed="showQR"
+              title="QR-Code"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0 1 3.75 9.375v-4.5ZM3.75 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 0 1-1.125-1.125v-4.5ZM13.5 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0 1 13.5 9.375v-4.5Z" />
+                <path stroke-linecap="round" stroke-linejoin="round" d="M6.75 6.75h.75v.75h-.75v-.75ZM6.75 16.5h.75v.75h-.75V16.5ZM16.5 6.75h.75v.75h-.75v-.75ZM13.5 13.5h.75v.75h-.75v-.75ZM13.5 19.5h.75v.75h-.75v-.75ZM19.5 13.5h.75v.75h-.75v-.75ZM19.5 19.5h.75v.75h-.75v-.75ZM16.5 16.5h.75v.75h-.75v-.75Z" />
+              </svg>
+            </button>
+          </div>
 
-          <div class="flex justify-center py-2">
+          <div v-if="showQR" class="mb-2 flex flex-col place-items-center justify-center py-2">
             <img
               :src="`/api/parent/${token}/qr`"
               alt="QR-Code"
               class="w-44 h-44 rounded-xl shadow-sm"
             />
-          </div>
 
           <button
             @click="shareQR"
@@ -40,8 +53,11 @@
             </svg>
             QR-Code teilen
           </button>
+          </div>
 
-          <!-- Push notification opt-in -->
+         </div>
+<div class="text-right">
+           <!-- Push notification opt-in -->
           <!-- Android: show install prompt if available -->
           <button
             v-if="installPrompt && !isStandalone"
@@ -69,8 +85,8 @@
           <p v-if="pushState === 'granted'" class="text-xs text-green-700">🔔 Benachrichtigungen aktiviert ✓</p>
           <p v-if="pushState === 'denied'" class="text-xs text-yellow-700">Benachrichtigungen wurden blockiert. Bitte in den Browser-Einstellungen freigeben.</p>
           <p v-if="pushError" class="text-xs text-red-600">Fehler: {{ pushError }}</p>
-        </div>
 
+</div>
         <ChildList
           :items="childItems"
           :busy="busy"
@@ -126,6 +142,7 @@ async function installPwa() {
 }
 
 const page = ref<ParentCheckinPage | null>(null)
+const showQR = ref(false)
 const loading = ref(true)
 const error = ref('')
 const busy = reactive<Record<number, boolean>>({})

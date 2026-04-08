@@ -104,6 +104,7 @@ func main() {
 		r.Post("/api/admin/checkins/{id}/confirm", h.ConfirmTagHandout)
 		r.Post("/api/admin/checkins/{id}/checkin", h.CheckInAtGroup)
 		r.Post("/api/admin/checkins/{id}/notify", h.SendParentMessage)
+		r.Delete("/api/admin/checkins/{id}/notify", h.ClearNotify)
 		r.Post("/api/admin/sync", h.SyncCT)
 	})
 

@@ -461,7 +461,7 @@ func (h *Handler) ListParents(w http.ResponseWriter, r *http.Request) {
 // Optional query params: ?status=pending|registered|checked_in  ?groupId=N
 // EndEvent deletes all today's check-in records (full reset of the event day).
 func (h *Handler) EndEvent(w http.ResponseWriter, r *http.Request) {
-	if err := h.db.Where("event_date = ?", localdb.Today()).Delete(&localdb.CheckIn{}).Error; err != nil {
+	if err := h.db.Unscoped().Where("event_date = ?", localdb.Today()).Delete(&localdb.CheckIn{}).Error; err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -652,8 +652,9 @@ func (h *Handler) RegisterChild(w http.ResponseWriter, r *http.Request) {
 
 	today := localdb.Today()
 	var record localdb.CheckIn
-	// Find existing record for today or create a new one.
-	h.db.Where(localdb.CheckIn{EventDate: today, ChildID: childID}).First(&record)
+	// Find existing record for today or create a new one (include soft-deleted rows).
+	h.db.Unscoped().Where("event_date = ? AND child_id = ?", today, childID).First(&record)
+	record.DeletedAt = gorm.DeletedAt{} // restore if soft-deleted
 
 	record.EventDate = today
 	record.ChildID = childID
@@ -898,4 +899,24 @@ func (h *Handler) SendParentMessage(w http.ResponseWriter, r *http.Request) {
 	record.LastNotifiedAt = &now
 	h.db.Save(&record)
 	writeJSON(w, http.StatusOK, map[string]any{"sent": sent})
+}
+
+// ClearNotify clears the LastNotifiedAt timestamp for a check-in record.
+func (h *Handler) ClearNotify(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.Atoi(chi.URLParam(r, "id"))
+	if err != nil {
+		http.Error(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+	var record localdb.CheckIn
+	if err := h.db.First(&record, id).Error; err != nil {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	record.LastNotifiedAt = nil
+	if err := h.db.Save(&record).Error; err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, record)
 }

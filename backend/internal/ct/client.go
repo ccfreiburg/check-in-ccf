@@ -191,60 +191,6 @@ func (c *Client) GetGroupMemberIDs(groupID int) ([]int, error) {
 	return ids, nil
 }
 
-// GetChildren returns members of groups with groupTypeId == 3 (Kids).
-// Adjust groupTypeId to match your ChurchTools instance.
-func (c *Client) GetChildren() ([]Child, error) {
-	const groupID = 599
-	const groupName = "KinderKirche"
-
-	type memberPage struct {
-		Data []struct {
-			PersonID int `json:"personId"`
-			Person   struct {
-				DomainIdentifier string `json:"domainIdentifier"`
-				DomainAttributes struct {
-					FirstName string `json:"firstName"`
-					LastName  string `json:"lastName"`
-				} `json:"domainAttributes"`
-			} `json:"person"`
-		} `json:"data"`
-		Meta struct {
-			Pagination struct {
-				LastPage int `json:"lastPage"`
-			} `json:"pagination"`
-		} `json:"meta"`
-	}
-
-	children := make([]Child, 0)
-	page := 1
-	for {
-		raw, err := c.getRaw(fmt.Sprintf("/groups/%d/members?page=%d&limit=100", groupID, page))
-		if err != nil {
-			return nil, err
-		}
-		var resp memberPage
-		if err := json.Unmarshal(raw, &resp); err != nil {
-			return nil, fmt.Errorf("members unmarshal: %w", err)
-		}
-		for _, m := range resp.Data {
-			children = append(children, Child{
-				Person: Person{
-					ID:        m.PersonID,
-					FirstName: m.Person.DomainAttributes.FirstName,
-					LastName:  m.Person.DomainAttributes.LastName,
-				},
-				GroupID:   groupID,
-				GroupName: groupName,
-			})
-		}
-		if page >= resp.Meta.Pagination.LastPage {
-			break
-		}
-		page++
-	}
-	return children, nil
-}
-
 // RelEntry is a CT relationship list item.
 type RelEntry struct {
 	RelationshipTypeID   int    `json:"relationshipTypeId"`
@@ -362,32 +308,6 @@ func (c *Client) getTodayMeetingID(groupID int) (int, error) {
 	return createResp.Data.ID, nil
 }
 
-func (c *Client) GetCheckInStatus(childID, groupID int) (*CheckInStatus, error) {
-	meetingID, err := c.getTodayMeetingID(groupID)
-	if err != nil || meetingID == 0 {
-		// No meeting today means nobody is checked in
-		return &CheckInStatus{ChildID: childID, CheckedIn: false}, nil
-	}
-	var membersResp struct {
-		Data []struct {
-			Member struct {
-				PersonID int `json:"personId"`
-			} `json:"member"`
-			PersonID    int  `json:"personId"`
-			IsCheckedIn bool `json:"isCheckedIn"`
-		} `json:"data"`
-	}
-	if err := c.get(fmt.Sprintf("/groups/%d/meetings/%d/members", groupID, meetingID), &membersResp); err != nil {
-		return nil, err
-	}
-	for _, m := range membersResp.Data {
-		if m.Member.PersonID == childID {
-			return &CheckInStatus{ChildID: childID, MeetingID: meetingID, CheckedIn: m.IsCheckedIn}, nil
-		}
-	}
-	return &CheckInStatus{ChildID: childID, MeetingID: meetingID, CheckedIn: false}, nil
-}
-
 func (c *Client) CheckIn(childID, groupID int) error {
 	meetingID, err := c.getTodayMeetingID(groupID)
 	if err != nil {
@@ -397,17 +317,6 @@ func (c *Client) CheckIn(childID, groupID int) error {
 		"date":           time.Now().UTC().Format("2006-01-02T15:04:05Z"),
 		"groupMeetingId": meetingID,
 	}, nil)
-}
-
-func (c *Client) CheckOut(childID, groupID int) error {
-	meetingID, err := c.getTodayMeetingID(groupID)
-	if err != nil {
-		return fmt.Errorf("getTodayMeeting: %w", err)
-	}
-	if meetingID == 0 {
-		return nil // nothing to check out from
-	}
-	return c.delete(fmt.Sprintf("/groups/%d/meetings/%d/members/%d", groupID, meetingID, childID))
 }
 
 func (c *Client) get(path string, out any) error {

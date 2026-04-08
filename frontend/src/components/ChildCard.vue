@@ -19,7 +19,7 @@
       >
         {{ statusLabel(item.status) }}
       </span>
-            <p v-if="item.status === 'checked_in'" class="text-xs text-green-700 text-right mb-2 mt-1 mr-2">
+            <p v-if="item.status === 'checked_in' && variant !== 'parent'" class="text-xs text-green-700 text-right mb-2 mt-1 mr-2">
         seit {{ formatTime(item.checkedInAt) }}
       </p>
       </div>

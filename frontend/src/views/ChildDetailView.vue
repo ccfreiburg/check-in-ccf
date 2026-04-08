@@ -74,23 +74,20 @@
           <!-- notify -->
           <button
             v-if="record.Status === 'checked_in'"
-            @click="doNotify"
-            :disabled="busy || noSubscription"
-            class="w-full bg-white border border-orange-400 text-orange-600 hover:bg-orange-50 font-semibold py-3 rounded-xl text-base disabled:opacity-50 transition"
+            @click="notifySent ? cancelNotify() : doNotify()"
+            :disabled="busy || (!notifySent && noSubscription)"
+            :class="notifySent
+              ? 'bg-orange-500 hover:bg-orange-600 text-white border-transparent'
+              : 'bg-white border border-orange-400 text-orange-600 hover:bg-orange-50'"
+            class="w-full font-semibold py-3 rounded-xl text-base disabled:opacity-50 transition border"
           >
-            {{ busy ? 'Bitte warten…' : 'Eltern rufen' }}
+            {{ busy ? 'Bitte warten…' : (notifySent ? 'Rufen beenden' : 'Eltern rufen') }}
           </button>
           <div
             v-if="noSubscription"
             class="bg-yellow-50 border border-yellow-200 rounded-xl px-4 py-3 text-sm text-yellow-800"
           >
             Keine Push-Benachrichtigung aktiviert.
-          </div>
-          <div
-            v-if="notifySent"
-            class="bg-green-50 border border-green-200 rounded-xl px-4 py-3 text-sm text-green-800 text-center"
-          >
-            Nachricht gesendet
           </div>
 
           <div class="border-t border-gray-100 pt-2 mt-1 flex flex-col gap-2">
@@ -141,6 +138,7 @@ import {
   checkInAtGroup,
   setCheckInStatus,
   sendParentMessage,
+  clearParentNotify,
   getChildParents,
   ApiError,
 } from '../api'
@@ -166,6 +164,7 @@ onMounted(async () => {
   try {
     const all = await listCheckins()
     record.value = all.find((r) => r.ID === id) ?? null
+    notifySent.value = !!record.value?.LastNotifiedAt
     if (record.value?.ChildID) {
       try {
         parents.value = await getChildParents(record.value.ChildID)
@@ -242,6 +241,21 @@ async function doNotify() {
     } else {
       errorMsg.value = e instanceof Error ? e.message : 'Fehler beim Senden'
     }
+  } finally {
+    busy.value = false
+  }
+}
+
+async function cancelNotify() {
+  if (!record.value || busy.value) return
+  busy.value = true
+  errorMsg.value = ''
+  try {
+    record.value = await clearParentNotify(record.value.ID)
+    notifySent.value = false
+    noSubscription.value = false
+  } catch (e) {
+    errorMsg.value = e instanceof Error ? e.message : 'Fehler'
   } finally {
     busy.value = false
   }
