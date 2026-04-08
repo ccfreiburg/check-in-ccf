@@ -21,12 +21,13 @@
       </li>
     </TransitionGroup>
     <p v-else class="text-center text-gray-400 py-10">
-      {{ emptyText ?? 'Keine Einträge.' }}
+      {{ emptyText ?? t('child_list.empty_fallback') }}
     </p>
   </div>
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import type { ChildCardItem } from '../utils/status'
 import ChildCard from './ChildCard.vue'
 
@@ -36,6 +37,8 @@ defineProps<{
   variant: 'parent' | 'door' | 'group' | 'super'
   emptyText?: string
 }>()
+
+const { t } = useI18n()
 
 const emit = defineEmits<{
   register: [item: ChildCardItem]

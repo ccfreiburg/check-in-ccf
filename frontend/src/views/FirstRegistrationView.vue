@@ -1,13 +1,13 @@
 <template>
   <div class="min-h-screen bg-gray-50">
-    <AdminNav title="Erstregistrierung" @logout="logout" />
+    <AdminNav :title="t('first_registration.title')" @logout="logout" />
 
     <div class="max-w-2xl mx-auto px-4 py-6">
       <!-- Search -->
       <input
         v-model="search"
         type="search"
-        placeholder="Search by name…"
+        :placeholder="t('first_registration.search_placeholder')"
         class="w-full border border-gray-300 rounded-xl px-4 py-3 text-base mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500"
       />
 
@@ -17,7 +17,7 @@
           @click="filtersOpen = !filtersOpen"
           class="flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-gray-900 transition"
         >
-          <span>Filter</span>
+          <span>{{ t('first_registration.filter') }}</span>
           <span v-if="!filtersOpen" class="text-gray-400 font-normal">{{ filterSummary }}</span>
           <span v-if="activeFilterCount > 0" class="bg-blue-600 text-white text-xs font-semibold px-2 py-0.5 rounded-full">{{ activeFilterCount }}</span>
           <span class="text-gray-400">{{ filtersOpen ? '▲' : '▼' }}</span>
@@ -26,7 +26,7 @@
           v-if="activeFilterCount > 0"
           @click="clearFilters"
           class="text-gray-400 hover:text-gray-700 transition text-lg leading-none"
-          title="Filter löschen"
+          :title="t('first_registration.filter_clear_title')"
         >&times;</button>
       </div>
 
@@ -38,8 +38,8 @@
         />
         <FilterLabels
           :items="[
-            { value: 'male',   label: 'Väter' },
-            { value: 'female', label: 'Mütter' },
+            { value: 'male',   label: t('first_registration.fathers') },
+            { value: 'female', label: t('first_registration.mothers') },
           ]"
           v-model="activeSexSet"
           active-class="bg-gray-700 text-white"
@@ -47,13 +47,13 @@
       </div>
 
       <!-- Loading / error -->
-      <div v-if="loading" class="text-center text-gray-400 py-12">Loading…</div>
+      <div v-if="loading" class="text-center text-gray-400 py-12">{{ t('common.loading') }}</div>
       <div v-else-if="error" class="text-center text-red-500 py-12">{{ error }}</div>
 
       <!-- Parent list (when sex filter active) -->
       <ul v-else-if="showParents" class="space-y-2">
         <li v-if="noSexData" class="bg-yellow-50 border border-yellow-200 rounded-xl px-4 py-3 text-sm text-yellow-800 mb-2">
-          Kein Geschlecht in der Datenbank — bitte CT-Sync durchführen.
+          {{ t('first_registration.no_sex_data') }}
         </li>
         <li
           v-for="parent in filteredParents"
@@ -73,7 +73,7 @@
           </svg>
         </li>
         <li v-if="filteredParents.length === 0" class="text-center text-gray-400 py-12">
-          Keine Eltern gefunden
+          {{ t('first_registration.no_parents') }}
         </li>
       </ul>
 
@@ -94,7 +94,7 @@
           </svg>
         </li>
         <li v-if="filteredChildren.length === 0" class="text-center text-gray-400 py-12">
-          No children found
+          {{ t('first_registration.no_children') }}
         </li>
       </ul>
     </div>
@@ -103,6 +103,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { listChildren, listParents, listGroups, ApiError } from '../api'
 import { useAuthStore } from '../stores/auth'
@@ -112,6 +113,7 @@ import FilterLabels from '../components/FilterLabels.vue'
 
 const router = useRouter()
 const auth = useAuthStore()
+const { t } = useI18n()
 
 const children = ref<Child[]>([])
 const allParents = ref<Parent[]>([])
@@ -127,10 +129,10 @@ const filterSummary = computed(() => {
   if (activeGroupsSet.value.size === 1) {
     const g = groups.value.find(g => activeGroupsSet.value.has(g.ID))
     if (g) parts.push(g.Name)
-  } else if (activeGroupsSet.value.size > 1) parts.push('Mehrere Gruppen')
-  if (activeSexSet.value.has('male') && !activeSexSet.value.has('female')) parts.push('Väter')
-  else if (activeSexSet.value.has('female') && !activeSexSet.value.has('male')) parts.push('Mütter')
-  else if (activeSexSet.value.size === 2) parts.push('Väter & Mütter')
+  } else if (activeGroupsSet.value.size > 1) parts.push(t('first_registration.filter_summary.multiple_groups'))
+  if (activeSexSet.value.has('male') && !activeSexSet.value.has('female')) parts.push(t('first_registration.filter_summary.fathers'))
+  else if (activeSexSet.value.has('female') && !activeSexSet.value.has('male')) parts.push(t('first_registration.filter_summary.mothers'))
+  else if (activeSexSet.value.size === 2) parts.push(t('first_registration.filter_summary.both'))
   return parts.join(' · ')
 })
 
@@ -188,7 +190,7 @@ onMounted(async () => {
   try {
     ;[children.value, groups.value] = await Promise.all([listChildren(), listGroups()])
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Failed to load data'
+    error.value = e instanceof Error ? e.message : t('first_registration.load_error')
     if (e instanceof ApiError && e.isAuthError) {
       auth.logout()
       router.push('/login')

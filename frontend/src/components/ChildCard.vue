@@ -32,8 +32,8 @@
       :disabled="busy"
       class="mt-1 w-full bg-green-600 hover:bg-green-700 active:bg-green-800 text-white font-semibold py-3 rounded-xl text-base disabled:opacity-50 transition active:scale-95"
     >
-      <span v-if="busy">Bitte warten…</span>
-      <span v-else>Anmelden</span>
+      <span v-if="busy">{{ t('common.please_wait') }}</span>
+      <span v-else>{{ t('child_card.register') }}</span>
     </button>
 
     <!-- parent: notification badge -->
@@ -41,7 +41,7 @@
       v-if="variant === 'parent' && item.lastNotifiedAt"
       class="mt-2 text-xs text-orange-700 bg-orange-50 border border-orange-200 rounded-xl px-3 py-2"
     >
-      Bitte zum Kind kommen – Nachricht gesendet um {{ formatTime(item.lastNotifiedAt) }}
+      {{ t('child_card.call_parents_notice', { time: formatTime(item.lastNotifiedAt) }) }}
     </p>
 
     <!-- door: Namensschild toggle (always visible) -->
@@ -54,8 +54,8 @@
         : 'bg-white border border-blue-400 text-blue-700 hover:bg-blue-50'"
       class="w-full font-semibold py-2.5 rounded-xl text-sm disabled:opacity-50 transition"
     >
-      <span v-if="busy">Bitte warten…</span>
-      <span v-else>{{ item.tagReceived ? 'Namensschildausgabe ✓' : 'Namensschildausgabe' }}</span>
+      <span v-if="busy">{{ t('common.please_wait') }}</span>
+      <span v-else>{{ item.tagReceived ? t('child_card.name_tag_done') : t('child_card.name_tag_action') }}</span>
     </button>
 
     <!-- group: main action + detail -->
@@ -67,7 +67,7 @@
           :disabled="busy"
           class="flex-1 bg-green-600 hover:bg-green-700 active:bg-green-800 text-white font-semibold py-2.5 rounded-xl text-sm disabled:opacity-50 transition"
         >
-          {{ busy ? 'Bitte warten…' : 'Check In' }}
+          {{ busy ? t('common.please_wait') : t('child_card.check_in') }}
         </button>
         <button
           v-else-if="item.status === 'checked_in'"
@@ -75,14 +75,14 @@
           :disabled="busy"
           class="flex-1 bg-white border border-orange-400 text-orange-600 hover:bg-orange-50 font-semibold py-2.5 rounded-xl text-sm disabled:opacity-50 transition"
         >
-          {{ busy ? '…' : 'Eltern rufen' }}
+          {{ busy ? t('child_card.detail_short') : t('child_card.call_parents') }}
         </button>
         <button
           v-if="item.status !== ''"
           @click="emit('detail')"
           class="px-4 py-2.5 rounded-xl text-sm font-medium bg-white border border-gray-300 text-gray-500 hover:bg-gray-50 transition"
         >
-          …
+          {{ t('child_card.detail_short') }}
         </button>
       </div>
     </template>
@@ -96,7 +96,7 @@
           :disabled="busy"
           class="flex-1 bg-green-600 hover:bg-green-700 active:bg-green-800 text-white font-semibold py-2.5 rounded-xl text-sm disabled:opacity-50 transition"
         >
-          {{ busy ? 'Bitte warten…' : 'Check In' }}
+          {{ busy ? t('common.please_wait') : t('child_card.check_in') }}
         </button>
         <button
           v-else-if="item.status === 'checked_in'"
@@ -104,13 +104,13 @@
           :disabled="busy"
           class="flex-1 bg-gray-700 hover:bg-gray-800 active:bg-gray-900 text-white font-semibold py-2.5 rounded-xl text-sm disabled:opacity-50 transition"
         >
-          {{ busy ? 'Bitte warten…' : 'Check Out' }}
+          {{ busy ? t('common.please_wait') : t('child_card.check_out') }}
         </button>
         <button
           @click="emit('detail')"
           class="px-4 py-2.5 rounded-xl text-sm font-medium bg-white border border-gray-300 text-gray-500 hover:bg-gray-50 transition"
         >
-          …
+          {{ t('child_card.detail_short') }}
         </button>
       </div>
     </template>
@@ -118,7 +118,8 @@
 </template>
 
 <script setup lang="ts">
-import { statusLabel, statusClass, formatDate, formatTime } from '../utils/status'
+import { useI18n } from 'vue-i18n'
+import { useStatusHelpers, statusClass, formatDate, formatTime } from '../utils/status'
 import type { ChildCardItem } from '../utils/status'
 
 defineProps<{
@@ -136,5 +137,6 @@ const emit = defineEmits<{
   detail: []
 }>()
 
-
+const { t } = useI18n()
+const { statusLabel } = useStatusHelpers()
 </script>

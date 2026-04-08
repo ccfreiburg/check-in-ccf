@@ -6,7 +6,7 @@
         @click="filtersOpen = !filtersOpen"
         class="flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-gray-900 transition"
       >
-        <span>Filter</span>
+        <span>{{ t('filters.toggle') }}</span>
         <span v-if="!filtersOpen" class="text-gray-400 font-normal">{{ filterSummary }}</span>
         <span v-if="activeFilterCount > 0" class="bg-blue-600 text-white text-xs font-semibold px-2 py-0.5 rounded-full">{{ activeFilterCount }}</span>
         <span class="text-gray-400">{{ filtersOpen ? '▲' : '▼' }}</span>
@@ -15,8 +15,8 @@
         v-if="activeFilterCount > 0"
         @click="clearFilters"
         class="text-gray-400 hover:text-gray-700 transition text-lg leading-none"
-        title="Filter löschen"
-      >&times;</button>
+        :title="t('filters.clear_title')"
+      >{{ t('common.close') }}</button>
     </div>
 
     <!-- Filter panel -->
@@ -24,7 +24,7 @@
       <input
         v-model="nameSearch"
         type="search"
-        placeholder="Name suchen…"
+        :placeholder="t('filters.name_placeholder')"
         class="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl bg-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-300"
       />
       <FilterLabels
@@ -39,8 +39,8 @@
       />
       <FilterLabels
         :items="[
-          { value: true,  label: 'Namensschild erhalten', count: props.records.filter(r => r.TagReceived).length },
-          { value: false, label: 'Kein Namensschild',     count: props.records.filter(r => !r.TagReceived).length },
+          { value: true,  label: t('filters.tag_received'), count: props.records.filter(r => r.TagReceived).length },
+          { value: false, label: t('filters.tag_missing'),  count: props.records.filter(r => !r.TagReceived).length },
         ]"
         v-model="activeTagFilters"
       />
@@ -52,8 +52,11 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import type { CheckInRecord } from '../api/types'
 import FilterLabels from './FilterLabels.vue'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   records: CheckInRecord[]
@@ -66,10 +69,10 @@ const activeGroups = ref(new Set<number>())
 const activeStatuses = ref(new Set<string>())
 const activeTagFilters = ref(new Set<boolean>(props.defaultTagFilters))
 
-const STATUS_OPTIONS = [
-  { value: 'pending',    label: 'Angemeldet' },
-  { value: 'checked_in', label: 'In Gruppe' },
-] as const
+const STATUS_OPTIONS = computed(() => [
+  { value: 'pending',    label: t('filters.status_pending') },
+  { value: 'checked_in', label: t('filters.status_checked_in') },
+] as const)
 
 const groups = computed(() => {
   const seen = new Map<number, string>()
@@ -89,22 +92,22 @@ const filterSummary = computed(() => {
   if (nameSearch.value.trim()) parts.push(`"${nameSearch.value.trim()}"`)
 
   if (groups.value.length > 1) {
-    if (activeGroups.value.size === 0) parts.push('Alle Gruppen')
+    if (activeGroups.value.size === 0) parts.push(t('filters.summary_all_groups'))
     else if (activeGroups.value.size === 1) {
       const g = groups.value.find(g => activeGroups.value.has(g.id))
       if (g) parts.push(g.name)
-    } else parts.push('Mehrere Gruppen')
+    } else parts.push(t('filters.summary_multiple_groups'))
   }
 
-  if (activeStatuses.value.size === 0) parts.push('Alle Status')
+  if (activeStatuses.value.size === 0) parts.push(t('filters.summary_all_status'))
   else if (activeStatuses.value.size === 1) {
     const v = [...activeStatuses.value][0]
-    const opt = STATUS_OPTIONS.find(s => s.value === v)
+    const opt = STATUS_OPTIONS.value.find(s => s.value === v)
     if (opt) parts.push(opt.label)
-  } else parts.push('Mehrere Status')
+  } else parts.push(t('filters.summary_multiple_status'))
 
   if (activeTagFilters.value.size === 1) {
-    parts.push([...activeTagFilters.value][0] ? 'Namensschild erhalten' : 'Kein Namensschild')
+    parts.push([...activeTagFilters.value][0] ? t('filters.summary_tag_received') : t('filters.summary_tag_missing'))
   }
 
   return parts.join(' · ')

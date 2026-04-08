@@ -1,6 +1,6 @@
 <template>
   <div class="min-h-screen bg-gray-50">
-    <AdminNav title="Kind" @logout="logout" />
+    <AdminNav :title="t('child_detail.title')" @logout="logout" />
 
     <div class="max-w-2xl mx-auto px-4 py-6 space-y-4">
       <!-- Back -->
@@ -11,11 +11,11 @@
         <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
         </svg>
-        Zurück
+        {{ t('common.back') }}
       </button>
 
-      <div v-if="loading" class="text-center text-gray-400 py-16">Wird geladen…</div>
-      <div v-else-if="!record" class="text-center text-gray-400 py-16">Nicht gefunden.</div>
+      <div v-if="loading" class="text-center text-gray-400 py-16">{{ t('common.loading') }}</div>
+      <div v-else-if="!record" class="text-center text-gray-400 py-16">{{ t('common.not_found') }}</div>
 
       <template v-else>
         <!-- Info card -->
@@ -27,14 +27,14 @@
               {{ statusLabel(record.Status) }}
             </span>
             <span v-if="record.CheckedInAt" class="text-xs text-green-700">
-              seit {{ formatTime(record.CheckedInAt) }}
+              {{ t('child_detail.checked_in_since', { time: formatTime(record.CheckedInAt) }) }}
             </span>
           </div>
         </div>
 
         <!-- Parent cards -->
         <div v-if="parents.length" class="bg-white rounded-2xl shadow-sm p-5 space-y-4">
-          <p class="text-xs text-gray-400 uppercase font-semibold">Eltern</p>
+          <p class="text-xs text-gray-400 uppercase font-semibold">{{ t('child_detail.parents_section') }}</p>
           <div v-for="p in parents" :key="p.id" class="space-y-0.5">
             <p class="font-semibold text-gray-900">{{ p.firstName }} {{ p.lastName }}</p>
             <a
@@ -60,7 +60,7 @@
             :disabled="busy"
             class="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-3 rounded-xl text-base disabled:opacity-50 transition"
           >
-            {{ busy ? 'Bitte warten…' : 'Check In' }}
+            {{ busy ? t('common.please_wait') : t('child_detail.check_in') }}
           </button>
           <button
             v-else-if="record.Status === 'checked_in'"
@@ -68,7 +68,7 @@
             :disabled="busy"
             class="w-full bg-gray-700 hover:bg-gray-800 text-white font-semibold py-3 rounded-xl text-base disabled:opacity-50 transition"
           >
-            {{ busy ? 'Bitte warten…' : 'Check Out' }}
+            {{ busy ? t('common.please_wait') : t('child_detail.check_out') }}
           </button>
 
           <!-- notify -->
@@ -81,13 +81,13 @@
               : 'bg-white border border-orange-400 text-orange-600 hover:bg-orange-50'"
             class="w-full font-semibold py-3 rounded-xl text-base disabled:opacity-50 transition border"
           >
-            {{ busy ? 'Bitte warten…' : (notifySent ? 'Rufen beenden' : 'Eltern rufen') }}
+            {{ busy ? t('common.please_wait') : (notifySent ? t('child_detail.stop_calling') : t('child_detail.call_parents')) }}
           </button>
           <div
             v-if="noSubscription"
             class="bg-yellow-50 border border-yellow-200 rounded-xl px-4 py-3 text-sm text-yellow-800"
           >
-            Keine Push-Benachrichtigung aktiviert.
+            {{ t('child_detail.no_push') }}
           </div>
 
           <div class="border-t border-gray-100 pt-2 mt-1 flex flex-col gap-2">
@@ -100,7 +100,7 @@
                 : 'bg-white border border-blue-400 text-blue-700 hover:bg-blue-50'"
               class="w-full font-semibold py-2.5 rounded-xl text-sm disabled:opacity-50 transition"
             >
-              {{ busy ? 'Bitte warten…' : `Namensschild ${record.TagReceived ? 'erhalten ✓' : 'übergeben'}` }}
+              {{ busy ? t('common.please_wait') : (record.TagReceived ? t('child_detail.name_tag_received') : t('child_detail.name_tag_handover')) }}
             </button>
 
             <!-- step back + full reset side by side -->
@@ -110,14 +110,14 @@
                 :disabled="busy || record.Status === 'pending'"
                 class="flex-1 py-2.5 rounded-xl text-sm font-medium bg-white border border-gray-300 text-gray-600 hover:bg-gray-50 disabled:opacity-40 transition"
               >
-                {{ busy ? '…' : 'Schritt zurück' }}
+                {{ busy ? '…' : t('child_detail.step_back') }}
               </button>
               <button
                 @click="doOverride('')"
                 :disabled="busy"
                 class="flex-1 py-2.5 rounded-xl text-sm font-medium bg-white border border-gray-300 text-gray-600 hover:bg-gray-50 disabled:opacity-40 transition"
               >
-                {{ busy ? '…' : 'Ganz zurück' }}
+                {{ busy ? '…' : t('child_detail.full_reset') }}
               </button>
             </div>
           </div>
@@ -131,6 +131,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import {
   listCheckins,
@@ -143,13 +144,15 @@ import {
   ApiError,
 } from '../api'
 import { useAuthStore } from '../stores/auth'
-import { statusLabel, statusClass, formatTime } from '../utils/status'
+import { useStatusHelpers, statusClass, formatTime } from '../utils/status'
 import type { CheckInRecord, Person } from '../api/types'
 import AdminNav from '../components/AdminNav.vue'
 
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
+const { t } = useI18n()
+const { statusLabel } = useStatusHelpers()
 
 const id = Number(route.params.id)
 const record = ref<CheckInRecord | null>(null)
@@ -189,7 +192,7 @@ async function doCheckIn() {
   try {
     record.value = await checkInAtGroup(record.value.ID)
   } catch (e) {
-    errorMsg.value = e instanceof Error ? e.message : 'Fehler'
+    errorMsg.value = e instanceof Error ? e.message : t('child_detail.error_fallback')
   } finally {
     busy.value = false
   }
@@ -207,7 +210,7 @@ async function doOverride(status: string) {
       record.value = result as CheckInRecord
     }
   } catch (e) {
-    errorMsg.value = e instanceof Error ? e.message : 'Fehler'
+    errorMsg.value = e instanceof Error ? e.message : t('child_detail.error_fallback')
   } finally {
     busy.value = false
   }
@@ -220,7 +223,7 @@ async function doTag() {
   try {
     record.value = await confirmTagHandout(record.value.ID)
   } catch (e) {
-    errorMsg.value = e instanceof Error ? e.message : 'Fehler'
+    errorMsg.value = e instanceof Error ? e.message : t('child_detail.error_fallback')
   } finally {
     busy.value = false
   }
@@ -239,7 +242,7 @@ async function doNotify() {
     if (e instanceof ApiError && e.status === 404) {
       noSubscription.value = true
     } else {
-      errorMsg.value = e instanceof Error ? e.message : 'Fehler beim Senden'
+      errorMsg.value = e instanceof Error ? e.message : t('child_detail.error_send')
     }
   } finally {
     busy.value = false
@@ -255,7 +258,7 @@ async function cancelNotify() {
     notifySent.value = false
     noSubscription.value = false
   } catch (e) {
-    errorMsg.value = e instanceof Error ? e.message : 'Fehler'
+    errorMsg.value = e instanceof Error ? e.message : t('child_detail.error_fallback')
   } finally {
     busy.value = false
   }

@@ -1,4 +1,5 @@
 // Shared display helpers and normalised card type used by ChildCard / ChildList.
+import { useI18n } from 'vue-i18n'
 
 /** Normalised item that ChildCard and ChildList work with. */
 export interface ChildCardItem {
@@ -15,12 +16,16 @@ export interface ChildCardItem {
   lastNotifiedAt?: string | null
 }
 
-export function statusLabel(s: string): string {
-  switch (s) {
-    case 'pending':    return 'Angemeldet'
-    case 'checked_in': return 'In der Gruppe ✓'
-    default:           return 'Noch nicht angemeldet'
+export function useStatusHelpers() {
+  const { t } = useI18n()
+  function statusLabel(s: string): string {
+    switch (s) {
+      case 'pending':    return t('status.pending')
+      case 'checked_in': return t('status.checked_in')
+      default:           return t('status.not_registered')
+    }
   }
+  return { statusLabel }
 }
 
 export function statusClass(s: string): string {

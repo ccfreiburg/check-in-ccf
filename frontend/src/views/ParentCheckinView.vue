@@ -1,27 +1,70 @@
 <template>
   <div class="min-h-screen bg-gray-50">
     <header class="bg-white shadow-sm">
-      <div class="max-w-2xl mx-auto px-4 py-4 flex items-center justify-center gap-2">
-        <img src="/favicon.svg" alt="CCF" class="w-7 h-7" />
-        <h1 class="text-xl font-bold text-gray-800">Kinder Anmeldung</h1>
+      <div class="max-w-2xl mx-auto px-4 py-4 flex items-center justify-between gap-2">
+        <div class="flex items-center gap-2">
+          <img src="/favicon.svg" :alt="t('common.ccf_alt')" class="w-7 h-7" />
+          <h1 class="text-xl font-bold text-gray-800">{{ t('parent.title') }}</h1>
+        </div>
+        <button
+          @click="langOpen = true"
+          class="p-1 rounded-lg text-gray-600 hover:text-gray-900 hover:bg-gray-100 transition"
+          :aria-label="t('nav.lang_switch')"
+          :title="t('nav.lang_switch')"
+        >
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 21l5.25-11.25L21 21m-9-3h7.5M3 5.621a48.474 48.474 0 016-.371m0 0c1.12 0 2.233.038 3.334.114M9 5.25V3m3.334 2.364C11.176 10.658 7.69 15.08 3 17.502m9.334-12.138c.896.061 1.785.147 2.666.257m-4.589 8.495a18.023 18.023 0 01-3.827-5.802" />
+          </svg>
+        </button>
       </div>
     </header>
 
+    <!-- Language modal -->
+    <transition name="fade">
+      <div
+        v-if="langOpen"
+        class="fixed inset-0 bg-black/40 z-40 flex items-center justify-center"
+        @click.self="langOpen = false"
+      >
+        <div class="bg-white rounded-2xl shadow-xl w-64 overflow-hidden">
+          <div class="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+            <span class="font-semibold text-gray-800">{{ t('nav.lang_modal_heading') }}</span>
+            <button @click="langOpen = false" class="text-gray-400 hover:text-gray-700 text-2xl leading-none">{{ t('common.close') }}</button>
+          </div>
+          <ul>
+            <li v-for="loc in locales" :key="loc.code">
+              <button
+                @click="setLocale(loc.code)"
+                class="w-full flex items-center gap-3 px-5 py-3.5 text-left text-sm font-medium transition hover:bg-gray-50"
+                :class="locale === loc.code ? 'text-blue-600 bg-blue-50' : 'text-gray-700'"
+              >
+                <span class="text-base">{{ loc.flag }}</span>
+                <span>{{ loc.label }}</span>
+                <svg v-if="locale === loc.code" class="w-4 h-4 ml-auto shrink-0" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                </svg>
+              </button>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </transition>
+
     <div class="max-w-2xl mx-auto px-4 py-6 space-y-6">
-      <div v-if="loading" class="text-center text-gray-400 py-16">Wird geladen…</div>
+      <div v-if="loading" class="text-center text-gray-400 py-16">{{ t('common.loading') }}</div>
       <div v-else-if="error" class="text-center py-16 space-y-3">
         <p class="text-red-500 font-medium">{{ error }}</p>
-        <p class="text-sm text-gray-400">Dieser Link ist möglicherweise abgelaufen. Bitte beim Dienst einen neuen QR-Code anfordern.</p>
+        <p class="text-sm text-gray-400">{{ t('parent.link_expired') }}</p>
       </div>
 
       <template v-else-if="page">
         <!-- Welcome banner -->
         <div class="bg-blue-50 border border-blue-200 rounded-2xl px-5 py-4 space-y-3">
           <p class="text-blue-800 font-medium">
-            Hallo {{ page.parent.firstName }} {{ page.parent.lastName }}
+            {{ t('parent.greeting', { firstName: page.parent.firstName, lastName: page.parent.lastName }) }}
           </p>
           <div class="flex items-center gap-2">
-            <span class="text-xs text-gray-500">Du kannst hier deine Kinder für den heutigen Tag anmelden.</span>
+            <span class="text-xs text-gray-500">{{ t('parent.subtitle') }}</span>
             <button
               @click="showQR = !showQR"
               :class="showQR
@@ -29,7 +72,7 @@
                 : 'bg-blue-100 text-blue-600 hover:bg-blue-200'"
               class="p-1.5 rounded-lg transition"
               :aria-pressed="showQR"
-              title="QR-Code"
+              :title="t('parent.qr_button_title')"
             >
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0 1 3.75 9.375v-4.5ZM3.75 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 0 1-1.125-1.125v-4.5ZM13.5 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0 1 13.5 9.375v-4.5Z" />
@@ -41,7 +84,7 @@
           <div v-if="showQR" class="mb-2 flex flex-col place-items-center justify-center py-2">
             <img
               :src="`/api/parent/${token}/qr`"
-              alt="QR-Code"
+              :alt="t('parent.qr_alt')"
               class="w-44 h-44 rounded-xl shadow-sm"
             />
 
@@ -52,7 +95,7 @@
             <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
             </svg>
-            QR-Code teilen
+            {{ t('parent.share_qr') }}
           </button>
           </div>
 
@@ -65,15 +108,15 @@
             @click="installPwa"
             class="flex items-center gap-2 text-sm font-medium text-orange-700 bg-orange-100 hover:bg-orange-200 active:bg-orange-300 px-4 py-2 rounded-xl transition active:scale-95"
           >
-            📲 App installieren
+            📲 {{ t('parent.install_app') }}
           </button>
           <!-- iOS: must be installed as PWA first -->
           <div
             v-if="isIos && !isStandalone"
             class="bg-orange-50 border border-orange-200 rounded-xl px-3 py-2 text-xs text-orange-800 space-y-1"
           >
-            <p class="font-semibold">📲 Für Benachrichtigungen auf iPhone:</p>
-            <p>Tippe <strong>Teilen</strong> → <strong>„Zum Home-Bildschirm"</strong> → App öffnen.</p>
+            <p class="font-semibold">{{ t('parent.ios_push_heading') }}</p>
+            <p>{{ t('parent.ios_push_steps') }}</p>
           </div>
           <button
             v-if="pushState === 'available' && (!isIos || isStandalone)"
@@ -81,18 +124,18 @@
             :disabled="pushBusy"
             class="flex items-center gap-2 text-sm font-medium text-green-700 bg-green-100 hover:bg-green-200 active:bg-green-300 px-4 py-2 rounded-xl transition active:scale-95 disabled:opacity-50"
           >
-            🔔 Benachrichtigungen aktivieren
+            🔔 {{ t('parent.enable_push') }}
           </button>
-          <p v-if="pushState === 'granted'" class="text-xs text-green-700">🔔 Benachrichtigungen aktiviert ✓</p>
-          <p v-if="pushState === 'denied'" class="text-xs text-yellow-700">Benachrichtigungen wurden blockiert. Bitte in den Browser-Einstellungen freigeben.</p>
-          <p v-if="pushError" class="text-xs text-red-600">Fehler: {{ pushError }}</p>
+          <p v-if="pushState === 'granted'" class="text-xs text-green-700">{{ t('parent.push_granted') }}</p>
+          <p v-if="pushState === 'denied'" class="text-xs text-yellow-700">{{ t('parent.push_denied') }}</p>
+          <p v-if="pushError" class="text-xs text-red-600">{{ t('parent.push_error', { error: pushError }) }}</p>
 
 </div>
         <ChildList
           :items="childItems"
           :busy="busy"
           variant="parent"
-          empty-text="Keine Kinder hinterlegt. Bitte beim Dienst melden."
+          :empty-text="t('parent.no_children')"
           @register="handleRegister"
         />
       </template>
@@ -111,6 +154,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, watch, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import { registerChild } from '../api'
 import { subscribeToPush } from '../utils/push'
@@ -118,11 +162,23 @@ import type { ChildWithStatus } from '../api/types'
 import type { ChildCardItem } from '../utils/status'
 import ChildList from '../components/ChildList.vue'
 import { useLiveParentPage } from '../composables/useLiveParentPage'
+import { setLocale as persistLocale } from '../i18n'
 
 const pageUrl = window.location.href
 
 const route = useRoute()
 const token = route.params.token as string
+const { t, locale } = useI18n()
+
+const langOpen = ref(false)
+const locales = [
+  { code: 'de', label: 'Deutsch', flag: '🇩🇪' },
+  { code: 'en', label: 'English', flag: '🇬🇧' },
+]
+function setLocale(code: string) {
+  persistLocale(code)
+  langOpen.value = false
+}
 
 // iOS PWA detection
 const isIos = /iphone|ipad|ipod/.test(navigator.userAgent.toLowerCase())
@@ -223,8 +279,8 @@ async function shareQR() {
   if (navigator.share) {
     try {
       await navigator.share({
-        title: 'Kinder Anmeldung',
-        text: `Anmeldelink für ${page.value?.parent.firstName ?? ''} ${page.value?.parent.lastName ?? ''}`,
+        title: t('parent.share_title'),
+        text: t('parent.share_text', { firstName: page.value?.parent.firstName ?? '', lastName: page.value?.parent.lastName ?? '' }),
         url: pageUrl,
       })
     } catch {
@@ -233,9 +289,9 @@ async function shareQR() {
   } else {
     try {
       await navigator.clipboard.writeText(pageUrl)
-      showFlash('Link in die Zwischenablage kopiert ✓')
+      showFlash(t('parent.link_copied'))
     } catch {
-      showFlash('Link: ' + pageUrl)
+      showFlash(t('parent.link_fallback', { url: pageUrl }))
     }
   }
 }
@@ -247,9 +303,9 @@ async function handleRegister(item: ChildCardItem) {
     await registerChild(token, item.id)
     const child = page.value?.children.find((c: ChildWithStatus) => c.id === item.id)
     if (child) child.status = 'pending'
-    showFlash(`${item.firstName} wurde angemeldet ✓`)
+    showFlash(t('parent.registered', { firstName: item.firstName }))
   } catch (e) {
-    showFlash(e instanceof Error ? e.message : 'Fehler beim Anmelden')
+    showFlash(e instanceof Error ? e.message : t('parent.register_error'))
   } finally {
     busy[item.id] = false
   }
