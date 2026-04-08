@@ -19,41 +19,39 @@ const router = createRouter({
     },
     {
       path: '/admin',
-      component: () => import('../views/AdminChildListView.vue'),
+      component: () => import('../views/FirstRegistrationView.vue'),
       meta: { requiresAuth: true },
     },
     {
       path: '/admin/parent/:id',
       name: 'parent-by-child',
-      component: () => import('../views/AdminParentDetailView.vue'),
+      component: () => import('../views/ParentDetailView.vue'),
       meta: { requiresAuth: true },
     },
     {
       path: '/admin/parents/:id',
       name: 'parent-by-parent',
-      component: () => import('../views/AdminParentDetailView.vue'),
+      component: () => import('../views/ParentDetailView.vue'),
       meta: { requiresAuth: true },
     },
     {
-      path: '/admin/door',
-      component: () => import('../views/AdminDoorView.vue'),
+      path: '/admin/today',
+      component: () => import('../views/ChildrenTodayView.vue'),
       meta: { requiresAuth: true },
     },
     {
-      path: '/admin/group',
-      component: () => import('../views/AdminGroupView.vue'),
+      path: '/admin/checkins/:id',
+      component: () => import('../views/ChildDetailView.vue'),
       meta: { requiresAuth: true },
     },
     {
       path: '/admin/checkins/:id/notify',
-      component: () => import('../views/AdminSendMessageView.vue'),
-      meta: { requiresAuth: true },
+      redirect: (to) => `/admin/checkins/${to.params.id}`,
     },
-    {
-      path: '/admin/super',
-      component: () => import('../views/AdminSuperView.vue'),
-      meta: { requiresAuth: true, requiresSuperAdmin: true },
-    },
+    // Legacy redirects
+    { path: '/admin/door',  redirect: '/admin/today' },
+    { path: '/admin/group', redirect: '/admin/today' },
+    { path: '/admin/super', redirect: '/admin/today' },
     {
       path: '/checkin/:token',
       component: () => import('../views/ParentCheckinView.vue'),
@@ -67,9 +65,6 @@ router.beforeEach((to) => {
 
   if (to.meta.requiresAuth && !auth.isLoggedIn) {
     return '/login'
-  }
-  if (to.meta.requiresSuperAdmin && !auth.isSuperAdmin) {
-    return '/admin'
   }
 })
 

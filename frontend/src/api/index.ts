@@ -66,6 +66,13 @@ export async function getParentDetailByParentId(parentId: number): Promise<Paren
   return handleResponse<ParentDetail>(res)
 }
 
+export async function getChildParents(childId: number): Promise<Person[]> {
+  const res = await fetch(`${BASE}/admin/children/${childId}/parents`, {
+    headers: authHeaders(),
+  })
+  return handleResponse<Person[]>(res)
+}
+
 /** Returns a URL to the QR code PNG image */
 export function qrCodeUrl(parentId: number): string {
   return `${BASE}/admin/children/${parentId}/qr`

@@ -10,6 +10,7 @@ export interface ChildCardItem {
   groupName: string
   /** '' = not registered today (parent view only) */
   status: string
+  tagReceived?: boolean
   checkedInAt?: string | null
   lastNotifiedAt?: string | null
 }
@@ -24,7 +25,6 @@ export interface FilterTab {
 export function statusLabel(s: string): string {
   switch (s) {
     case 'pending':    return 'Angemeldet'
-    case 'registered': return 'Namensschild erhalten'
     case 'checked_in': return 'In der Gruppe ✓'
     default:           return 'Noch nicht angemeldet'
   }
@@ -33,7 +33,6 @@ export function statusLabel(s: string): string {
 export function statusClass(s: string): string {
   switch (s) {
     case 'pending':    return 'bg-yellow-100 text-yellow-700'
-    case 'registered': return 'bg-blue-100 text-blue-700'
     case 'checked_in': return 'bg-green-100 text-green-700'
     default:           return 'bg-gray-100 text-gray-500'
   }

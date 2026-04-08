@@ -11,12 +11,18 @@
           <span v-if="item.birthdate" class="ml-2 text-gray-400">· {{ formatDate(item.birthdate) }}</span>
         </p>
       </div>
+      <div>
+
       <span
         :class="statusClass(item.status)"
-        class="text-xs font-semibold px-3 py-1 rounded-full shrink-0 ml-2"
+        class="text-xs font-semibold px-3 py-1 rounded-full shrink-0 ml-2 text-nowrap"
       >
         {{ statusLabel(item.status) }}
       </span>
+            <p v-if="item.status === 'checked_in'" class="text-xs text-green-700 text-right mb-2 mt-1 mr-2">
+        seit {{ formatTime(item.checkedInAt) }}
+      </p>
+      </div>
     </div>
 
     <!-- parent: Anmelden -->
@@ -35,76 +41,79 @@
       v-if="variant === 'parent' && item.lastNotifiedAt"
       class="mt-2 text-xs text-orange-700 bg-orange-50 border border-orange-200 rounded-xl px-3 py-2"
     >
-      📢 Bitte zum Kind kommen – Nachricht gesendet um {{ formatTime(item.lastNotifiedAt) }}
+      Bitte zum Kind kommen – Nachricht gesendet um {{ formatTime(item.lastNotifiedAt) }}
     </p>
 
-    <!-- door: Namensschild -->
+    <!-- door: Namensschild toggle (always visible) -->
     <button
-      v-if="variant === 'door' && item.status === 'pending'"
+      v-if="variant === 'door'"
       @click="emit('confirm-tag')"
       :disabled="busy"
-      class="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold py-2.5 rounded-xl text-sm disabled:opacity-50 transition"
+      :class="item.tagReceived
+        ? 'bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white'
+        : 'bg-white border border-blue-400 text-blue-700 hover:bg-blue-50'"
+      class="w-full font-semibold py-2.5 rounded-xl text-sm disabled:opacity-50 transition"
     >
       <span v-if="busy">Bitte warten…</span>
-      <span v-else>Namensschild übergeben ✓</span>
+      <span v-else>Namensschild {{ item.tagReceived ? 'erhalten ✓' : 'übergeben' }}</span>
     </button>
 
-    <!-- group: Namensschild (independent) + Check In -->
+    <!-- group: main action + detail -->
     <template v-if="variant === 'group'">
-      <div class="flex flex-col gap-2">
+      <div class="flex gap-2">
         <button
           v-if="item.status === 'pending'"
-          @click="emit('confirm-tag')"
-          :disabled="busy"
-          class="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold py-2.5 rounded-xl text-sm disabled:opacity-50 transition"
-        >
-          <span v-if="busy">Bitte warten…</span>
-          <span v-else>Namensschild übergeben ✓</span>
-        </button>
-        <button
-          v-if="item.status === 'pending' || item.status === 'registered'"
           @click="emit('check-in')"
           :disabled="busy"
-          class="w-full bg-green-600 hover:bg-green-700 active:bg-green-800 text-white font-semibold py-2.5 rounded-xl text-sm disabled:opacity-50 transition"
+          class="flex-1 bg-green-600 hover:bg-green-700 active:bg-green-800 text-white font-semibold py-2.5 rounded-xl text-sm disabled:opacity-50 transition"
         >
-          <span v-if="busy">Bitte warten…</span>
-          <span v-else>Check In</span>
+          {{ busy ? 'Bitte warten…' : 'Check In' }}
         </button>
-        <p v-if="item.status === 'checked_in'" class="text-sm text-green-700 text-center mt-1">
-          Eingecheckt um {{ formatTime(item.checkedInAt) }}
-        </p>
         <button
-          v-if="item.status === 'checked_in'"
+          v-else-if="item.status === 'checked_in'"
           @click="emit('notify')"
-          class="w-full bg-orange-500 hover:bg-orange-600 active:bg-orange-700 text-white font-semibold py-2.5 rounded-xl text-sm transition"
+          :disabled="busy"
+          class="flex-1 bg-white border border-orange-400 text-orange-600 hover:bg-orange-50 font-semibold py-2.5 rounded-xl text-sm disabled:opacity-50 transition"
         >
-          Eltern rufen 📢
+          {{ busy ? '…' : 'Eltern rufen' }}
+        </button>
+        <button
+          v-if="item.status !== ''"
+          @click="emit('detail')"
+          class="px-4 py-2.5 rounded-xl text-sm font-medium bg-white border border-gray-300 text-gray-500 hover:bg-gray-50 transition"
+        >
+          …
         </button>
       </div>
     </template>
 
-    <!-- super: override buttons -->
-    <div v-if="variant === 'super'" class="flex flex-wrap gap-2 mt-1">
-      <button
-        v-for="opt in SUPER_STATUS_OPTIONS"
-        :key="opt.value"
-        @click="emit('override', opt.value)"
-        :disabled="busy || item.status === opt.value"
-        :class="item.status === opt.value
-          ? 'opacity-40 cursor-default bg-gray-100 text-gray-500'
-          : opt.cls"
-        class="flex-1 min-w-[120px] py-2 rounded-xl text-sm font-medium disabled:opacity-40 transition"
-      >
-        {{ busy ? '…' : opt.label }}
-      </button>
-      <button
-        @click="emit('override', '')"
-        :disabled="busy"
-        class="flex-1 min-w-[120px] py-2 rounded-xl text-sm font-medium bg-red-50 text-red-700 hover:bg-red-100 disabled:opacity-40 transition"
-      >
-        {{ busy ? '…' : 'Löschen' }}
-      </button>
-    </div>
+    <!-- super: main next-step + detail -->
+    <template v-if="variant === 'super'">
+      <div class="flex gap-2">
+        <button
+          v-if="item.status === 'pending'"
+          @click="emit('check-in')"
+          :disabled="busy"
+          class="flex-1 bg-green-600 hover:bg-green-700 active:bg-green-800 text-white font-semibold py-2.5 rounded-xl text-sm disabled:opacity-50 transition"
+        >
+          {{ busy ? 'Bitte warten…' : 'Check In' }}
+        </button>
+        <button
+          v-else-if="item.status === 'checked_in'"
+          @click="emit('override', '')"
+          :disabled="busy"
+          class="flex-1 bg-gray-700 hover:bg-gray-800 active:bg-gray-900 text-white font-semibold py-2.5 rounded-xl text-sm disabled:opacity-50 transition"
+        >
+          {{ busy ? 'Bitte warten…' : 'Check Out' }}
+        </button>
+        <button
+          @click="emit('detail')"
+          class="px-4 py-2.5 rounded-xl text-sm font-medium bg-white border border-gray-300 text-gray-500 hover:bg-gray-50 transition"
+        >
+          …
+        </button>
+      </div>
+    </template>
   </div>
 </template>
 
@@ -124,11 +133,8 @@ const emit = defineEmits<{
   'check-in': []
   notify: []
   override: [status: string]
+  detail: []
 }>()
 
-const SUPER_STATUS_OPTIONS = [
-  { value: 'pending',    label: 'Angemeldet',            cls: 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200' },
-  { value: 'registered', label: 'Namensschild erhalten', cls: 'bg-blue-100 text-blue-700 hover:bg-blue-200'       },
-  { value: 'checked_in', label: 'In der Gruppe',         cls: 'bg-green-100 text-green-700 hover:bg-green-200'   },
-] as const
+
 </script>

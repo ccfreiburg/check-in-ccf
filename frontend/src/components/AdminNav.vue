@@ -1,7 +1,10 @@
 <template>
   <header class="bg-white shadow-sm sticky top-0 z-10">
     <div class="max-w-2xl mx-auto px-4 py-4 flex items-center justify-between gap-2">
-      <h1 class="text-xl font-bold text-gray-800 shrink-0">{{ title }}</h1>
+      <div class="flex items-center gap-2 shrink-0">
+        <img src="/favicon.svg" alt="CCF" class="w-7 h-7" />
+        <h1 class="text-xl font-bold text-gray-800">{{ title }}</h1>
+      </div>
       <nav class="flex items-center gap-3 text-sm overflow-x-auto">
         <router-link
           v-for="link in navLinks"
@@ -62,28 +65,19 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { syncCT } from '../api'
-import { useAuthStore } from '../stores/auth'
 
 defineProps<{ title: string }>()
 const emit = defineEmits<{ logout: [] }>()
 
 const route = useRoute()
-const authStore = useAuthStore()
 
-const baseLinks = [
-  { to: '/admin',       label: 'QR-Codes' },
-  { to: '/admin/door',  label: 'Eingang'  },
-  { to: '/admin/group', label: 'Gruppe'   },
+const navLinks = [
+  { to: '/admin',       label: 'QR-Codes'     },
+  { to: '/admin/today', label: 'Kinder heute' },
 ]
-
-const navLinks = computed(() =>
-  authStore.isSuperAdmin
-    ? [...baseLinks, { to: '/admin/super', label: '⚡ Super Admin' }]
-    : baseLinks,
-)
 
 const syncing  = ref(false)
 const syncMsg  = ref('')

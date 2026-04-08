@@ -277,6 +277,45 @@ func (h *Handler) GetParentDetailByParentID(w http.ResponseWriter, r *http.Reque
 	})
 }
 
+// GetChildParents returns all parents linked to a child (by child CT ID) from the local DB.
+func (h *Handler) GetChildParents(w http.ResponseWriter, r *http.Request) {
+	childID, err := strconv.Atoi(chi.URLParam(r, "id"))
+	if err != nil {
+		http.Error(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+
+	var rels []localdb.SyncedRelationship
+	h.db.Where("child_ct_id = ?", childID).Find(&rels)
+
+	type parentRow struct {
+		ID          int    `json:"id"`
+		FirstName   string `json:"firstName"`
+		LastName    string `json:"lastName"`
+		Email       string `json:"email"`
+		PhoneNumber string `json:"phoneNumber"`
+		Mobile      string `json:"mobile"`
+	}
+
+	parents := make([]parentRow, 0, len(rels))
+	for _, rel := range rels {
+		var p localdb.SyncedPerson
+		h.db.Where("ct_id = ? AND is_parent = ?", rel.ParentCTID, true).Limit(1).Find(&p)
+		if p.ID == 0 {
+			continue
+		}
+		parents = append(parents, parentRow{
+			ID:          p.CTID,
+			FirstName:   p.FirstName,
+			LastName:    p.LastName,
+			Email:       p.Email,
+			PhoneNumber: p.PhoneNumber,
+			Mobile:      p.Mobile,
+		})
+	}
+	writeJSON(w, http.StatusOK, parents)
+}
+
 func (h *Handler) GenerateQR(w http.ResponseWriter, r *http.Request) {
 	childID, err := strconv.Atoi(chi.URLParam(r, "id"))
 	if err != nil {
@@ -438,8 +477,9 @@ func (h *Handler) ListCheckins(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, records)
 }
 
-// ConfirmTagHandout moves a check-in from "pending" to "registered".
-// Called by the door volunteer after handing out the name tag.
+// ConfirmTagHandout toggles the TagReceived flag on a check-in record.
+// Idempotent toggle: sets true if false, false if true.
+// Does not affect the check-in status.
 func (h *Handler) ConfirmTagHandout(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
 	if err != nil {
@@ -451,13 +491,13 @@ func (h *Handler) ConfirmTagHandout(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "not found", http.StatusNotFound)
 		return
 	}
-	if record.Status != localdb.StatusPending {
-		http.Error(w, fmt.Sprintf("cannot confirm: status is %q", record.Status), http.StatusConflict)
-		return
-	}
 	now := time.Now()
-	record.Status = localdb.StatusRegistered
-	record.RegisteredAt = &now
+	record.TagReceived = !record.TagReceived
+	if record.TagReceived {
+		record.RegisteredAt = &now
+	} else {
+		record.RegisteredAt = nil
+	}
 	if err := h.db.Save(&record).Error; err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -466,7 +506,6 @@ func (h *Handler) ConfirmTagHandout(w http.ResponseWriter, r *http.Request) {
 }
 
 // CheckInAtGroup moves a check-in to "checked_in" and syncs to ChurchTools.
-// Accepts both "pending" and "registered" – tag handout is not a required step.
 func (h *Handler) CheckInAtGroup(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
 	if err != nil {
@@ -478,7 +517,7 @@ func (h *Handler) CheckInAtGroup(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "not found", http.StatusNotFound)
 		return
 	}
-	if record.Status != localdb.StatusRegistered && record.Status != localdb.StatusPending {
+	if record.Status != localdb.StatusPending {
 		http.Error(w, fmt.Sprintf("cannot check in: status is %q", record.Status), http.StatusConflict)
 		return
 	}
@@ -614,6 +653,12 @@ func (h *Handler) RegisterChild(w http.ResponseWriter, r *http.Request) {
 	record.Birthdate = child.Birthdate
 	record.GroupID = child.GroupID
 	record.GroupName = child.GroupName
+	// Override with the more accurate group info from the local sync DB.
+	var membership localdb.SyncedGroupMembership
+	if h.db.Where("person_ct_id = ?", childID).Limit(1).Find(&membership).Error == nil && membership.GroupID != 0 {
+		record.GroupID = membership.GroupID
+		record.GroupName = membership.GroupName
+	}
 	record.ParentID = claims.ParentID
 	record.Status = localdb.StatusPending
 
@@ -641,7 +686,7 @@ func (h *Handler) SetCheckInStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch req.Status {
-	case "", localdb.StatusPending, localdb.StatusRegistered, localdb.StatusCheckedIn:
+	case "", localdb.StatusPending, localdb.StatusCheckedIn:
 		// valid
 	default:
 		http.Error(w, "invalid status", http.StatusBadRequest)
@@ -667,18 +712,11 @@ func (h *Handler) SetCheckInStatus(w http.ResponseWriter, r *http.Request) {
 	now := time.Now()
 	switch req.Status {
 	case localdb.StatusPending:
-		// Full reset: clear both timestamps
+		// Full reset: clear all timestamps and tag
+		record.TagReceived = false
 		record.RegisteredAt = nil
 		record.CheckedInAt = nil
-	case localdb.StatusRegistered:
-		// Namensschild is independent – set RegisteredAt if not already set,
-		// clear CheckedInAt (checked_in → registered rollback)
-		if record.RegisteredAt == nil {
-			record.RegisteredAt = &now
-		}
-		record.CheckedInAt = nil
 	case localdb.StatusCheckedIn:
-		// Stamp CheckedInAt; leave RegisteredAt as-is (may be nil if tag was skipped)
 		if record.CheckedInAt == nil {
 			record.CheckedInAt = &now
 		}

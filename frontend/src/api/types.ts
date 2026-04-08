@@ -33,7 +33,7 @@ export interface Parent {
 }
 
 /** Status in the 2-step flow: '' = not registered today */
-export type CheckInStatus = '' | 'pending' | 'registered' | 'checked_in'
+export type CheckInStatus = '' | 'pending' | 'checked_in'
 
 export interface ChildWithStatus extends Child {
   status: CheckInStatus
@@ -62,7 +62,9 @@ export interface CheckInRecord {
   GroupName: string
   ParentID: number
   Status: CheckInStatus
+  TagReceived: boolean
   RegisteredAt: string | null
   CheckedInAt: string | null
+  LastNotifiedAt: string | null
   CreatedAt: string
 }

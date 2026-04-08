@@ -11,6 +11,7 @@
           @check-in="emit('check-in', item)"
           @notify="emit('notify', item)"
           @override="(s) => emit('override', item, s)"
+          @detail="emit('detail', item)"
         />
       </li>
     </ul>
@@ -37,5 +38,6 @@ const emit = defineEmits<{
   'check-in': [item: ChildCardItem]
   notify: [item: ChildCardItem]
   override: [item: ChildCardItem, status: string]
+  detail: [item: ChildCardItem]
 }>()
 </script>

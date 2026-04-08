@@ -93,6 +93,7 @@ func main() {
 		r.Use(auth.AdminMiddleware(jwtSecret))
 		r.Get("/api/admin/children", h.ListChildren)
 		r.Get("/api/admin/children/{id}/parent", h.GetParentDetail)
+		r.Get("/api/admin/children/{id}/parents", h.GetChildParents)
 		r.Post("/api/admin/children/{id}/qr", h.GenerateQR)
 		// Check-in management (2-step flow)
 		r.Get("/api/admin/groups", h.ListGroups)

@@ -7,9 +7,8 @@ import (
 )
 
 const (
-	StatusPending    = "pending"
-	StatusRegistered = "registered"
-	StatusCheckedIn  = "checked_in"
+	StatusPending   = "pending"
+	StatusCheckedIn = "checked_in"
 )
 
 // PushSubscription stores a Web Push subscription for a parent identified by their token.
@@ -40,12 +39,13 @@ type CheckIn struct {
 	GroupName string
 	ParentID  int
 
-	// Status is one of: pending | registered | checked_in
-	// pending     – parent tapped "Anmelden" in the app; child is on the way
-	// registered  – door volunteer confirmed the name tag was handed out
-	// checked_in  – group volunteer confirmed the child arrived at the group
-	Status         string
-	RegisteredAt   *time.Time
+	// Status is one of: pending | checked_in
+	// pending    – parent tapped "Anmelden"; child is on the way or not yet group-confirmed
+	// checked_in – group volunteer confirmed the child arrived
+	Status string
+	// TagReceived tracks name-tag handout independently of check-in status.
+	TagReceived    bool
+	RegisteredAt   *time.Time // set when TagReceived is first toggled true
 	CheckedInAt    *time.Time
 	LastNotifiedAt *time.Time
 }

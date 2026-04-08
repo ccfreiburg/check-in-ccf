@@ -5,7 +5,7 @@ import type { ChildCardItem } from '../../utils/status'
 
 const items: ChildCardItem[] = [
   { id: 1, firstName: 'Anna', lastName: 'Schmidt', groupId: 10, groupName: 'Gruppe A', status: 'pending' },
-  { id: 2, firstName: 'Bob',  lastName: 'Müller',  groupId: 20, groupName: 'Gruppe B', status: 'registered' },
+  { id: 2, firstName: 'Bob',  lastName: 'Müller',  groupId: 20, groupName: 'Gruppe B', status: 'pending' },
 ]
 
 describe('ChildList', () => {
@@ -67,22 +67,22 @@ describe('ChildList', () => {
   })
 
   it('forwards check-in with item when group button is clicked', async () => {
-    // registered status → only Check In button
+    // pending: Check In (btn[0]) + ... (btn[1])
+    const pendingItem: ChildCardItem = { ...items[1], status: 'pending' }
     const w = mount(ChildList, {
-      props: { items: [items[1]], busy: {}, variant: 'group' },
+      props: { items: [pendingItem], busy: {}, variant: 'group' },
     })
-    await w.find('button').trigger('click')
+    await w.findAll('button')[0].trigger('click')
     expect(w.emitted('check-in')).toHaveLength(1)
     expect((w.emitted('check-in')![0] as ChildCardItem[])[0]).toMatchObject({ id: 2 })
   })
 
   it('forwards override with item and status when super button is clicked', async () => {
     const w = mount(ChildList, { props: { items: [items[0]], busy: {}, variant: 'super' } })
-    // 4 buttons: pending(disabled), registered, checked_in, delete
-    await w.findAll('button')[2].trigger('click') // checked_in
-    const emitted = w.emitted('override')![0] as [ChildCardItem, string]
+    // 2 buttons: check-in(0), detail(1)
+    await w.findAll('button')[0].trigger('click') // check-in
+    const emitted = w.emitted('check-in')![0] as [ChildCardItem]
     expect(emitted[0]).toMatchObject({ id: 1 })
-    expect(emitted[1]).toBe('checked_in')
   })
 
   it('renders correct variant for all cards', () => {

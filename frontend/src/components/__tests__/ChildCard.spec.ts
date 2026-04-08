@@ -35,13 +35,6 @@ describe('ChildCard – display', () => {
     expect(w.text()).toContain('Angemeldet')
   })
 
-  it('renders status badge for registered', () => {
-    const w = mount(ChildCard, {
-      props: { item: { ...base, status: 'registered' }, variant: 'door' },
-    })
-    expect(w.text()).toContain('Namensschild erhalten')
-  })
-
   it('renders status badge for checked_in', () => {
     const w = mount(ChildCard, {
       props: { item: { ...base, status: 'checked_in' }, variant: 'door' },
@@ -91,24 +84,25 @@ describe('ChildCard – parent variant', () => {
 })
 
 describe('ChildCard – door variant', () => {
-  it('shows Namensschild button for pending', () => {
+  it('shows Namensschild toggle button (tag not given)', () => {
     const w = mount(ChildCard, { props: { item: base, variant: 'door' } })
     expect(w.find('button').exists()).toBe(true)
     expect(w.find('button').text()).toContain('Namensschild')
+    expect(w.find('button').text()).toContain('übergeben')
   })
 
-  it('hides button for registered', () => {
+  it('shows Namensschild as received when tagReceived=true', () => {
     const w = mount(ChildCard, {
-      props: { item: { ...base, status: 'registered' }, variant: 'door' },
+      props: { item: { ...base, tagReceived: true }, variant: 'door' },
     })
-    expect(w.find('button').exists()).toBe(false)
+    expect(w.find('button').text()).toContain('erhalten')
   })
 
-  it('hides button for checked_in', () => {
+  it('shows toggle for checked_in status too', () => {
     const w = mount(ChildCard, {
       props: { item: { ...base, status: 'checked_in' }, variant: 'door' },
     })
-    expect(w.find('button').exists()).toBe(false)
+    expect(w.find('button').exists()).toBe(true)
   })
 
   it('emits confirm-tag on click', async () => {
@@ -119,99 +113,67 @@ describe('ChildCard – door variant', () => {
 })
 
 describe('ChildCard – group variant', () => {
-  it('shows both buttons for pending', () => {
+  it('shows Check In + detail for pending', () => {
     const w = mount(ChildCard, { props: { item: base, variant: 'group' } })
     const btns = w.findAll('button')
     expect(btns).toHaveLength(2)
-    expect(btns[0].text()).toContain('Namensschild')
-    expect(btns[1].text()).toContain('Check In')
+    expect(btns[0].text()).toContain('Check In')
+    expect(btns[1].text()).toBe('…')
   })
 
-  it('shows only Check In for registered', () => {
+  it('shows Eltern rufen + detail for checked_in', () => {
     const w = mount(ChildCard, {
-      props: { item: { ...base, status: 'registered' }, variant: 'group' },
+      props: { item: { ...base, status: 'checked_in', checkedInAt: '2026-04-08T10:30:00Z' }, variant: 'group' },
     })
     const btns = w.findAll('button')
-    expect(btns).toHaveLength(1)
-    expect(btns[0].text()).toContain('Check In')
+    expect(btns).toHaveLength(2)
+    expect(btns[0].text()).toContain('Eltern rufen')
+    expect(btns[1].text()).toBe('…')
   })
 
-  it('shows notify button and check-in time for checked_in', () => {
-    const w = mount(ChildCard, {
-      props: {
-        item: { ...base, status: 'checked_in', checkedInAt: '2026-04-08T10:30:00Z' },
-        variant: 'group',
-      },
-    })
-    expect(w.find('button').exists()).toBe(true)
-    expect(w.find('button').text()).toContain('Eltern rufen')
-    expect(w.text()).toContain('Eingecheckt um')
-  })
-
-  it('emits confirm-tag on first button click (pending)', async () => {
+  it('emits check-in on Check In button click', async () => {
     const w = mount(ChildCard, { props: { item: base, variant: 'group' } })
     await w.findAll('button')[0].trigger('click')
-    expect(w.emitted('confirm-tag')).toHaveLength(1)
+    expect(w.emitted('check-in')).toHaveLength(1)
   })
 
-  it('emits check-in on second button click (pending)', async () => {
+  it('emits detail on ... button click', async () => {
     const w = mount(ChildCard, { props: { item: base, variant: 'group' } })
     await w.findAll('button')[1].trigger('click')
-    expect(w.emitted('check-in')).toHaveLength(1)
-  })
-
-  it('emits check-in on single button click (registered)', async () => {
-    const w = mount(ChildCard, {
-      props: { item: { ...base, status: 'registered' }, variant: 'group' },
-    })
-    await w.find('button').trigger('click')
-    expect(w.emitted('check-in')).toHaveLength(1)
+    expect(w.emitted('detail')).toHaveLength(1)
   })
 })
 
 describe('ChildCard – super variant', () => {
-  it('renders 4 buttons (3 statuses + delete)', () => {
+  it('renders Check In + detail = 2 buttons for pending', () => {
     const w = mount(ChildCard, { props: { item: base, variant: 'super' } })
-    expect(w.findAll('button')).toHaveLength(4)
+    expect(w.findAll('button')).toHaveLength(2)
   })
 
-  it('emits override with "pending" for first button', async () => {
+  it('renders Check Out + detail = 2 buttons for checked_in', () => {
     const w = mount(ChildCard, {
-      props: { item: { ...base, status: 'registered' }, variant: 'super' },
+      props: { item: { ...base, status: 'checked_in', checkedInAt: '2026-04-08T10:00:00Z' }, variant: 'super' },
+    })
+    expect(w.findAll('button')).toHaveLength(2)
+  })
+
+  it('emits check-in from Check In button (pending)', async () => {
+    const w = mount(ChildCard, { props: { item: base, variant: 'super' } })
+    await w.findAll('button')[0].trigger('click')
+    expect(w.emitted('check-in')).toHaveLength(1)
+  })
+
+  it('emits override "" from Check Out button (checked_in)', async () => {
+    const w = mount(ChildCard, {
+      props: { item: { ...base, status: 'checked_in', checkedInAt: '2026-04-08T10:00:00Z' }, variant: 'super' },
     })
     await w.findAll('button')[0].trigger('click')
-    expect(w.emitted('override')![0]).toEqual(['pending'])
-  })
-
-  it('emits override with "registered" for second button', async () => {
-    const w = mount(ChildCard, { props: { item: base, variant: 'super' } })
-    await w.findAll('button')[1].trigger('click')
-    expect(w.emitted('override')![0]).toEqual(['registered'])
-  })
-
-  it('emits override with "checked_in" for third button', async () => {
-    const w = mount(ChildCard, { props: { item: base, variant: 'super' } })
-    await w.findAll('button')[2].trigger('click')
-    expect(w.emitted('override')![0]).toEqual(['checked_in'])
-  })
-
-  it('emits override with "" for delete button', async () => {
-    const w = mount(ChildCard, { props: { item: base, variant: 'super' } })
-    await w.findAll('button')[3].trigger('click')
     expect(w.emitted('override')![0]).toEqual([''])
   })
 
-  it('disables the button matching current status', () => {
+  it('emits detail on ... button click', async () => {
     const w = mount(ChildCard, { props: { item: base, variant: 'super' } })
-    // base.status = 'pending', so first button (pending) is disabled
-    expect(w.findAll('button')[0].attributes('disabled')).toBeDefined()
-    expect(w.findAll('button')[1].attributes('disabled')).toBeUndefined()
-  })
-
-  it('shows … on all buttons when busy', () => {
-    const w = mount(ChildCard, { props: { item: base, variant: 'super', busy: true } })
-    for (const btn of w.findAll('button')) {
-      expect(btn.text()).toBe('…')
-    }
+    await w.findAll('button')[1].trigger('click')
+    expect(w.emitted('detail')).toHaveLength(1)
   })
 })
