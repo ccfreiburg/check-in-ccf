@@ -27,9 +27,37 @@ type Person struct {
 	ID          int    `json:"id"`
 	FirstName   string `json:"firstName"`
 	LastName    string `json:"lastName"`
+	Birthdate   string `json:"birthday,omitempty"`
 	Email       string `json:"email"`
 	PhoneNumber string `json:"phoneNumber"`
 	Mobile      string `json:"mobile,omitempty"`
+	SexID       int    `json:"sexId,omitempty"`
+}
+
+// GetSexes returns a map of sex ID → short name ("male" or "female").
+// Data comes from /person/masterdata under the "sexes" key.
+func (c *Client) GetSexes() (map[int]string, error) {
+	var resp struct {
+		Data struct {
+			Sexes []struct {
+				ID   int    `json:"id"`
+				Name string `json:"name"`
+			} `json:"sexes"`
+		} `json:"data"`
+	}
+	if err := c.get("/person/masterdata", &resp); err != nil {
+		return nil, err
+	}
+	m := make(map[int]string, len(resp.Data.Sexes))
+	for _, s := range resp.Data.Sexes {
+		switch s.Name {
+		case "sex.male":
+			m[s.ID] = "male"
+		case "sex.female":
+			m[s.ID] = "female"
+		}
+	}
+	return m, nil
 }
 
 type Child struct {
@@ -52,6 +80,115 @@ func (c *Client) GetPerson(id int) (*Person, error) {
 		return nil, err
 	}
 	return &resp.Data, nil
+}
+
+// GetPersonsBulk fetches multiple persons by ID in batches of 50 using the
+// /persons?ids[]=... endpoint. Returns a map keyed by CT person ID.
+func (c *Client) GetPersonsBulk(ids []int) (map[int]Person, error) {
+	const chunkSize = 50
+	type listResp struct {
+		Data []Person `json:"data"`
+	}
+	result := make(map[int]Person, len(ids))
+	for start := 0; start < len(ids); start += chunkSize {
+		end := start + chunkSize
+		if end > len(ids) {
+			end = len(ids)
+		}
+		chunk := ids[start:end]
+		path := "/persons?page=1&limit=50"
+		for _, id := range chunk {
+			path += fmt.Sprintf("&ids[]=%d", id)
+		}
+		// CT may paginate even within our chunk; loop just in case.
+		for page := 1; ; page++ {
+			// Replace page param on subsequent iterations.
+			pagePath := path
+			if page > 1 {
+				pagePath = fmt.Sprintf("/persons?page=%d&limit=50", page)
+				for _, id := range chunk {
+					pagePath += fmt.Sprintf("&ids[]=%d", id)
+				}
+			}
+			raw, err := c.getRaw(pagePath)
+			if err != nil {
+				return nil, fmt.Errorf("GetPersonsBulk page %d: %w", page, err)
+			}
+			var resp struct {
+				Data []Person `json:"data"`
+				Meta struct {
+					Pagination struct {
+						LastPage int `json:"lastPage"`
+					} `json:"pagination"`
+				} `json:"meta"`
+			}
+			if err := json.Unmarshal(raw, &resp); err != nil {
+				return nil, fmt.Errorf("GetPersonsBulk unmarshal: %w", err)
+			}
+			for _, p := range resp.Data {
+				result[p.ID] = p
+			}
+			if page >= resp.Meta.Pagination.LastPage || len(resp.Data) == 0 {
+				break
+			}
+		}
+	}
+	return result, nil
+}
+
+// GetRelationships returns the raw relationship list for a person.
+// Exported so ctsync can call it directly without re-parsing.
+func (c *Client) GetRelationships(personID int) ([]relEntry, error) {
+	return c.getRelationships(personID)
+}
+
+// Group holds basic group info returned by ChurchTools.
+type Group struct {
+	ID   int    `json:"id"`
+	Name string `json:"name"`
+}
+
+// GetGroup returns the group metadata for a given group ID.
+func (c *Client) GetGroup(id int) (*Group, error) {
+	var resp struct {
+		Data Group `json:"data"`
+	}
+	if err := c.get(fmt.Sprintf("/groups/%d", id), &resp); err != nil {
+		return nil, err
+	}
+	return &resp.Data, nil
+}
+
+// GetGroupMemberIDs returns the CT person IDs of all members in a group.
+func (c *Client) GetGroupMemberIDs(groupID int) ([]int, error) {
+	type memberPage struct {
+		Data []struct {
+			PersonID int `json:"personId"`
+		} `json:"data"`
+		Meta struct {
+			Pagination struct {
+				LastPage int `json:"lastPage"`
+			} `json:"pagination"`
+		} `json:"meta"`
+	}
+	var ids []int
+	for page := 1; ; page++ {
+		raw, err := c.getRaw(fmt.Sprintf("/groups/%d/members?page=%d&limit=100", groupID, page))
+		if err != nil {
+			return nil, err
+		}
+		var resp memberPage
+		if err := json.Unmarshal(raw, &resp); err != nil {
+			return nil, fmt.Errorf("members unmarshal: %w", err)
+		}
+		for _, m := range resp.Data {
+			ids = append(ids, m.PersonID)
+		}
+		if page >= resp.Meta.Pagination.LastPage || len(resp.Data) == 0 {
+			break
+		}
+	}
+	return ids, nil
 }
 
 // GetChildren returns members of groups with groupTypeId == 3 (Kids).
@@ -108,8 +245,8 @@ func (c *Client) GetChildren() ([]Child, error) {
 	return children, nil
 }
 
-// relEntry is the shared struct for CT relationship list items.
-type relEntry struct {
+// RelEntry is a CT relationship list item.
+type RelEntry struct {
 	RelationshipTypeID   int    `json:"relationshipTypeId"`
 	DegreeOfRelationship string `json:"degreeOfRelationship"`
 	Relative             struct {
@@ -120,6 +257,9 @@ type relEntry struct {
 		} `json:"domainAttributes"`
 	} `json:"relative"`
 }
+
+// relEntry is kept as an alias so existing internal callers still compile.
+type relEntry = RelEntry
 
 func (c *Client) getRelationships(personID int) ([]relEntry, error) {
 	raw, err := c.getRaw(fmt.Sprintf("/persons/%d/relationships", personID))
@@ -148,12 +288,21 @@ func (c *Client) GetChildrenForParent(parentID int) ([]Child, error) {
 		if rel.RelationshipTypeID == 1 && rel.DegreeOfRelationship == "relationship.part.child" {
 			id := 0
 			fmt.Sscanf(rel.Relative.DomainIdentifier, "%d", &id)
-			children = append(children, Child{
-				Person: Person{
+			if id == 0 {
+				continue
+			}
+			// Fetch full person details to get birthdate.
+			person, err := c.GetPerson(id)
+			if err != nil || person == nil {
+				// Fall back to relationship name data only.
+				person = &Person{
 					ID:        id,
 					FirstName: rel.Relative.DomainAttributes.FirstName,
 					LastName:  rel.Relative.DomainAttributes.LastName,
-				},
+				}
+			}
+			children = append(children, Child{
+				Person:    *person,
 				GroupID:   599,
 				GroupName: "KinderKirche",
 			})

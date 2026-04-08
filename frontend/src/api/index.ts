@@ -1,4 +1,4 @@
-import type { Child, ParentDetail, ParentCheckinPage } from './types'
+import type { Child, Parent, CheckInRecord, ParentDetail, ParentCheckinPage } from './types'
 
 const BASE = '/api'
 
@@ -7,24 +7,31 @@ function authHeaders(): HeadersInit {
   return token ? { Authorization: `Bearer ${token}` } : {}
 }
 
+export class ApiError extends Error {
+  constructor(public readonly status: number, message: string) {
+    super(message)
+    this.name = 'ApiError'
+  }
+  get isAuthError() { return this.status === 401 || this.status === 403 }
+}
+
 async function handleResponse<T>(res: Response): Promise<T> {
   if (!res.ok) {
     const text = await res.text()
-    throw new Error(text || res.statusText)
+    throw new ApiError(res.status, text.trim() || res.statusText)
   }
   return res.json() as Promise<T>
 }
 
 // ── Admin auth ────────────────────────────────────────────────────────────
 
-export async function adminLogin(password: string): Promise<string> {
+export async function adminLogin(password: string): Promise<{ token: string; role: string }> {
   const res = await fetch(`${BASE}/auth/admin`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ password }),
   })
-  const { token } = await handleResponse<{ token: string }>(res)
-  return token
+  return handleResponse<{ token: string; role: string }>(res)
 }
 
 // ── Admin endpoints ───────────────────────────────────────────────────────
@@ -35,8 +42,22 @@ export async function listChildren(): Promise<Child[]> {
   return data ?? []
 }
 
+export async function listParents(sex?: 'male' | 'female'): Promise<Parent[]> {
+  const qs = sex ? `?sex=${sex}` : ''
+  const res = await fetch(`${BASE}/admin/parents${qs}`, { headers: authHeaders() })
+  const data = await handleResponse<Parent[] | null>(res)
+  return data ?? []
+}
+
 export async function getParentDetail(parentId: number): Promise<ParentDetail> {
   const res = await fetch(`${BASE}/admin/children/${parentId}/parent`, {
+    headers: authHeaders(),
+  })
+  return handleResponse<ParentDetail>(res)
+}
+
+export async function getParentDetailByParentId(parentId: number): Promise<ParentDetail> {
+  const res = await fetch(`${BASE}/admin/parents/${parentId}`, {
     headers: authHeaders(),
   })
   return handleResponse<ParentDetail>(res)
@@ -58,6 +79,64 @@ export async function generateQR(parentId: number): Promise<{ blob: Blob; url: s
   return { blob, url }
 }
 
+// ── Admin: check-in management ────────────────────────────────────────────
+
+export async function listCheckins(
+  opts: { status?: string; groupId?: number } = {},
+): Promise<CheckInRecord[]> {
+  const params = new URLSearchParams()
+  if (opts.status) params.set('status', opts.status)
+  if (opts.groupId) params.set('groupId', String(opts.groupId))
+  const qs = params.toString() ? `?${params}` : ''
+  const res = await fetch(`${BASE}/admin/checkins${qs}`, { headers: authHeaders() })
+  const data = await handleResponse<CheckInRecord[] | null>(res)
+  return data ?? []
+}
+
+export async function confirmTagHandout(id: number): Promise<CheckInRecord> {
+  const res = await fetch(`${BASE}/admin/checkins/${id}/confirm`, {
+    method: 'POST',
+    headers: authHeaders(),
+  })
+  return handleResponse<CheckInRecord>(res)
+}
+
+export async function checkInAtGroup(id: number): Promise<CheckInRecord> {
+  const res = await fetch(`${BASE}/admin/checkins/${id}/checkin`, {
+    method: 'POST',
+    headers: authHeaders(),
+  })
+  return handleResponse<CheckInRecord>(res)
+}
+
+/** Super-admin: override a check-in record to any status. Empty string deletes the record. */
+export async function setCheckInStatus(
+  id: number,
+  status: CheckInStatus | '',
+): Promise<CheckInRecord | { status: 'deleted' }> {
+  const res = await fetch(`${BASE}/admin/checkins/${id}/set-status`, {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status }),
+  })
+  return handleResponse<CheckInRecord | { status: 'deleted' }>(res)
+}
+
+/** Trigger a full ChurchTools → local DB sync. Resolves when sync is complete. */
+export async function syncCT(): Promise<void> {
+  const res = await fetch(`${BASE}/admin/sync`, {
+    method: 'POST',
+    headers: authHeaders(),
+  })
+  await handleResponse<{ status: string }>(res)
+}
+
+export async function listGroups(): Promise<{ ID: number; Name: string }[]> {
+  const res = await fetch(`${BASE}/admin/groups`, { headers: authHeaders() })
+  const data = await handleResponse<{ ID: number; Name: string }[] | null>(res)
+  return data ?? []
+}
+
 // ── Parent-facing endpoints ───────────────────────────────────────────────
 
 export async function getParentPage(token: string): Promise<ParentCheckinPage> {
@@ -65,24 +144,13 @@ export async function getParentPage(token: string): Promise<ParentCheckinPage> {
   return handleResponse<ParentCheckinPage>(res)
 }
 
-export async function checkIn(
+/** Step 1 – parent taps "Anmelden" at the entrance. */
+export async function registerChild(
   token: string,
   childId: number,
-  groupId: number,
-): Promise<{ checkedIn: boolean }> {
-  const res = await fetch(`${BASE}/parent/${token}/checkin/${childId}?groupId=${groupId}`, {
+): Promise<{ status: string; id: number }> {
+  const res = await fetch(`${BASE}/parent/${token}/register/${childId}`, {
     method: 'POST',
   })
-  return handleResponse<{ checkedIn: boolean }>(res)
-}
-
-export async function checkOut(
-  token: string,
-  childId: number,
-  groupId: number,
-): Promise<{ checkedIn: boolean }> {
-  const res = await fetch(`${BASE}/parent/${token}/checkout/${childId}?groupId=${groupId}`, {
-    method: 'POST',
-  })
-  return handleResponse<{ checkedIn: boolean }>(res)
+  return handleResponse<{ status: string; id: number }>(res)
 }

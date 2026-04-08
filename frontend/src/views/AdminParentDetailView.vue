@@ -7,7 +7,7 @@
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
           </svg>
         </button>
-        <h1 class="text-xl font-bold text-gray-800">Parent Detail</h1>
+        <h1 class="text-xl font-bold text-gray-800">Erstregistrierung</h1>
       </div>
     </header>
 
@@ -54,7 +54,7 @@
         </div>
 
         <!-- Confirm & generate QR -->
-        <div v-if="!qrBlob" class="text-center">
+        <div v-if="!qrBlob && qrChildId != null" class="text-center">
           <button
             @click="generateQR"
             :disabled="qrLoading"
@@ -100,17 +100,23 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getParentDetail, generateQR as apiGenerateQR } from '../api'
+import { getParentDetail, getParentDetailByParentId, generateQR as apiGenerateQR } from '../api'
 import type { ParentDetail } from '../api/types'
 
 const route = useRoute()
 const router = useRouter()
 
-const parentId = Number(route.params.id)
+const routeId = Number(route.params.id)
+const byParent = route.name === 'parent-by-parent'
 
 const detail = ref<ParentDetail | null>(null)
 const loading = ref(true)
 const error = ref('')
+
+// QR is generated using a child ID; when navigating by parent, use first child.
+const qrChildId = computed(() =>
+  byParent ? (detail.value?.children[0]?.id ?? null) : routeId,
+)
 
 const qrBlob = ref<Blob | null>(null)
 const qrBlobUrl = computed(() =>
@@ -122,7 +128,9 @@ const qrError = ref('')
 
 onMounted(async () => {
   try {
-    detail.value = await getParentDetail(parentId)
+    detail.value = byParent
+      ? await getParentDetailByParentId(routeId)
+      : await getParentDetail(routeId)
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Failed to load parent'
   } finally {
@@ -131,10 +139,11 @@ onMounted(async () => {
 })
 
 async function generateQR() {
+  if (qrChildId.value == null) return
   qrError.value = ''
   qrLoading.value = true
   try {
-    const result = await apiGenerateQR(parentId)
+    const result = await apiGenerateQR(qrChildId.value)
     qrBlob.value = result.blob
     qrCheckinUrl.value = result.url
   } catch (e) {

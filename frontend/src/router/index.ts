@@ -20,8 +20,30 @@ const router = createRouter({
     },
     {
       path: '/admin/parent/:id',
+      name: 'parent-by-child',
       component: () => import('../views/AdminParentDetailView.vue'),
       meta: { requiresAuth: true },
+    },
+    {
+      path: '/admin/parents/:id',
+      name: 'parent-by-parent',
+      component: () => import('../views/AdminParentDetailView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
+      path: '/admin/door',
+      component: () => import('../views/AdminDoorView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
+      path: '/admin/group',
+      component: () => import('../views/AdminGroupView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
+      path: '/admin/super',
+      component: () => import('../views/AdminSuperView.vue'),
+      meta: { requiresAuth: true, requiresSuperAdmin: true },
     },
     {
       path: '/checkin/:token',
@@ -35,6 +57,9 @@ router.beforeEach((to) => {
   const auth = useAuthStore()
   if (to.meta.requiresAuth && !auth.isLoggedIn) {
     return '/login'
+  }
+  if (to.meta.requiresSuperAdmin && !auth.isSuperAdmin) {
+    return '/admin'
   }
 })
 

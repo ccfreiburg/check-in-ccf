@@ -1,6 +1,8 @@
 # Backend
 backend/.env
 backend/server
+backend/tmp/**
+backend/checkin.db
 
 # Frontend
 frontend/.env

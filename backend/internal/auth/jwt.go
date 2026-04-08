@@ -30,6 +30,17 @@ func NewAdminToken(secret []byte) (string, error) {
 	return jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(secret)
 }
 
+func NewSuperAdminToken(secret []byte) (string, error) {
+	claims := Claims{
+		Role: "super_admin",
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+		},
+	}
+	return jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(secret)
+}
+
 func NewParentToken(secret []byte, parentID int) (string, error) {
 	claims := Claims{
 		Role:     "parent",
@@ -69,7 +80,27 @@ func AdminMiddleware(secret []byte) func(http.Handler) http.Handler {
 			}
 			tokenStr := strings.TrimPrefix(header, "Bearer ")
 			claims, err := ParseToken(secret, tokenStr)
-			if err != nil || claims.Role != "admin" {
+			if err != nil || (claims.Role != "admin" && claims.Role != "super_admin") {
+				http.Error(w, "forbidden", http.StatusForbidden)
+				return
+			}
+			ctx := context.WithValue(r.Context(), claimsKey, claims)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+}
+
+func SuperAdminMiddleware(secret []byte) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			header := r.Header.Get("Authorization")
+			if !strings.HasPrefix(header, "Bearer ") {
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				return
+			}
+			tokenStr := strings.TrimPrefix(header, "Bearer ")
+			claims, err := ParseToken(secret, tokenStr)
+			if err != nil || claims.Role != "super_admin" {
 				http.Error(w, "forbidden", http.StatusForbidden)
 				return
 			}
