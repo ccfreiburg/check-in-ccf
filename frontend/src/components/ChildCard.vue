@@ -58,8 +58,8 @@
       <span v-else>{{ item.tagReceived ? t('child_card.name_tag_done') : t('child_card.name_tag_action') }}</span>
     </button>
 
-    <!-- group: main action + detail -->
-    <template v-if="variant === 'group'">
+    <!-- volunteer: main action + detail -->
+    <template v-if="variant === 'volunteer'">
       <div class="flex gap-2">
         <button
           v-if="item.status === 'pending'"
@@ -71,11 +71,11 @@
         </button>
         <button
           v-else-if="item.status === 'checked_in'"
-          @click="emit('notify')"
+          @click="emit('override', '')"
           :disabled="busy"
-          class="flex-1 bg-white border border-orange-400 text-orange-600 hover:bg-orange-50 font-semibold py-2.5 rounded-xl text-sm disabled:opacity-50 transition"
+          class="flex-1 bg-gray-700 hover:bg-gray-800 active:bg-gray-900 text-white font-semibold py-2.5 rounded-xl text-sm disabled:opacity-50 transition"
         >
-          {{ busy ? t('child_card.detail_short') : t('child_card.call_parents') }}
+          {{ busy ? t('common.please_wait') : t('child_card.check_out') }}
         </button>
         <button
           v-if="item.status !== ''"
@@ -87,8 +87,8 @@
       </div>
     </template>
 
-    <!-- super: main next-step + detail -->
-    <template v-if="variant === 'super'">
+    <!-- admin: main next-step + detail -->
+    <template v-if="variant === 'admin'">
       <div class="flex gap-2">
         <button
           v-if="item.status === 'pending'"
@@ -125,7 +125,7 @@ import type { ChildCardItem } from '../utils/status'
 defineProps<{
   item: ChildCardItem
   busy?: boolean
-  variant: 'parent' | 'door' | 'group' | 'super'
+  variant: 'parent' | 'door' | 'volunteer' | 'admin'
 }>()
 
 const emit = defineEmits<{

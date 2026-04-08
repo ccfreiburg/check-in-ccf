@@ -34,7 +34,7 @@ import ChildCard from './ChildCard.vue'
 defineProps<{
   items: ChildCardItem[]
   busy: Record<number, boolean>
-  variant: 'parent' | 'door' | 'group' | 'super'
+  variant: 'parent' | 'door' | 'volunteer' | 'admin'
   emptyText?: string
 }>()
 

@@ -63,7 +63,7 @@ func (h *Handler) AdminLogin(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "internal server error", http.StatusInternalServerError)
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]string{"token": token, "role": "super_admin"})
+		writeJSON(w, http.StatusOK, map[string]string{"token": token, "role": "admin"})
 		return
 	}
 	if req.Password != h.adminPassword {
@@ -75,7 +75,7 @@ func (h *Handler) AdminLogin(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"token": token, "role": "admin"})
+	writeJSON(w, http.StatusOK, map[string]string{"token": token, "role": "volunteer"})
 }
 
 // ── Admin: ChurchTools views ──────────────────────────────────────────────

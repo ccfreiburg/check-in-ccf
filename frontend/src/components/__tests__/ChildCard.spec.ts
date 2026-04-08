@@ -112,9 +112,9 @@ describe('ChildCard – door variant', () => {
   })
 })
 
-describe('ChildCard – group variant', () => {
+describe('ChildCard – volunteer variant', () => {
   it('shows Check In + detail for pending', () => {
-    const w = mount(ChildCard, { props: { item: base, variant: 'group' } })
+    const w = mount(ChildCard, { props: { item: base, variant: 'volunteer' } })
     const btns = w.findAll('button')
     expect(btns).toHaveLength(2)
     expect(btns[0].text()).toContain('Check In')
@@ -123,7 +123,7 @@ describe('ChildCard – group variant', () => {
 
   it('shows Eltern rufen + detail for checked_in', () => {
     const w = mount(ChildCard, {
-      props: { item: { ...base, status: 'checked_in', checkedInAt: '2026-04-08T10:30:00Z' }, variant: 'group' },
+      props: { item: { ...base, status: 'checked_in', checkedInAt: '2026-04-08T10:30:00Z' }, variant: 'volunteer' },
     })
     const btns = w.findAll('button')
     expect(btns).toHaveLength(2)
@@ -132,47 +132,47 @@ describe('ChildCard – group variant', () => {
   })
 
   it('emits check-in on Check In button click', async () => {
-    const w = mount(ChildCard, { props: { item: base, variant: 'group' } })
+    const w = mount(ChildCard, { props: { item: base, variant: 'volunteer' } })
     await w.findAll('button')[0].trigger('click')
     expect(w.emitted('check-in')).toHaveLength(1)
   })
 
   it('emits detail on ... button click', async () => {
-    const w = mount(ChildCard, { props: { item: base, variant: 'group' } })
+    const w = mount(ChildCard, { props: { item: base, variant: 'volunteer' } })
     await w.findAll('button')[1].trigger('click')
     expect(w.emitted('detail')).toHaveLength(1)
   })
 })
 
-describe('ChildCard – super variant', () => {
+describe('ChildCard – admin variant', () => {
   it('renders Check In + detail = 2 buttons for pending', () => {
-    const w = mount(ChildCard, { props: { item: base, variant: 'super' } })
+    const w = mount(ChildCard, { props: { item: base, variant: 'admin' } })
     expect(w.findAll('button')).toHaveLength(2)
   })
 
   it('renders Check Out + detail = 2 buttons for checked_in', () => {
     const w = mount(ChildCard, {
-      props: { item: { ...base, status: 'checked_in', checkedInAt: '2026-04-08T10:00:00Z' }, variant: 'super' },
+      props: { item: { ...base, status: 'checked_in', checkedInAt: '2026-04-08T10:00:00Z' }, variant: 'admin' },
     })
     expect(w.findAll('button')).toHaveLength(2)
   })
 
   it('emits check-in from Check In button (pending)', async () => {
-    const w = mount(ChildCard, { props: { item: base, variant: 'super' } })
+    const w = mount(ChildCard, { props: { item: base, variant: 'admin' } })
     await w.findAll('button')[0].trigger('click')
     expect(w.emitted('check-in')).toHaveLength(1)
   })
 
   it('emits override "" from Check Out button (checked_in)', async () => {
     const w = mount(ChildCard, {
-      props: { item: { ...base, status: 'checked_in', checkedInAt: '2026-04-08T10:00:00Z' }, variant: 'super' },
+      props: { item: { ...base, status: 'checked_in', checkedInAt: '2026-04-08T10:00:00Z' }, variant: 'admin' },
     })
     await w.findAll('button')[0].trigger('click')
     expect(w.emitted('override')![0]).toEqual([''])
   })
 
   it('emits detail on ... button click', async () => {
-    const w = mount(ChildCard, { props: { item: base, variant: 'super' } })
+    const w = mount(ChildCard, { props: { item: base, variant: 'admin' } })
     await w.findAll('button')[1].trigger('click')
     expect(w.emitted('detail')).toHaveLength(1)
   })

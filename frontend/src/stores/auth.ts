@@ -7,7 +7,7 @@ export const useAuthStore = defineStore('auth', () => {
   const role = ref<string>(localStorage.getItem('adminRole') ?? '')
 
   const isLoggedIn = computed(() => !!token.value)
-  const isSuperAdmin = computed(() => role.value === 'super_admin')
+  const isAdmin = computed(() => role.value === 'admin')
 
   async function login(password: string) {
     const { token: t, role: r } = await apiAdminLogin(password)
@@ -24,5 +24,5 @@ export const useAuthStore = defineStore('auth', () => {
     localStorage.removeItem('adminRole')
   }
 
-  return { token, role, isLoggedIn, isSuperAdmin, login, logout }
+  return { token, role, isLoggedIn, isAdmin, login, logout }
 })

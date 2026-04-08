@@ -11,7 +11,7 @@
           <ChildList
             :items="filtered.map(toCardItem)"
             :busy="busy"
-            :variant="auth.isSuperAdmin ? 'super' : 'group'"
+            :variant="auth.isAdmin ? 'admin' : 'volunteer'"
             :empty-text="t('children_today.no_children')"
             @confirm-tag="handleConfirmTag"
             @check-in="handleCheckIn"

@@ -21,7 +21,7 @@ type Claims struct {
 
 func NewAdminToken(secret []byte) (string, error) {
 	claims := Claims{
-		Role: "admin",
+		Role: "volunteer",
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
@@ -32,7 +32,7 @@ func NewAdminToken(secret []byte) (string, error) {
 
 func NewSuperAdminToken(secret []byte) (string, error) {
 	claims := Claims{
-		Role: "super_admin",
+		Role: "admin",
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
@@ -80,7 +80,7 @@ func AdminMiddleware(secret []byte) func(http.Handler) http.Handler {
 			}
 			tokenStr := strings.TrimPrefix(header, "Bearer ")
 			claims, err := ParseToken(secret, tokenStr)
-			if err != nil || (claims.Role != "admin" && claims.Role != "super_admin") {
+			if err != nil || (claims.Role != "volunteer" && claims.Role != "admin") {
 				http.Error(w, "forbidden", http.StatusForbidden)
 				return
 			}
@@ -100,7 +100,7 @@ func SuperAdminMiddleware(secret []byte) func(http.Handler) http.Handler {
 			}
 			tokenStr := strings.TrimPrefix(header, "Bearer ")
 			claims, err := ParseToken(secret, tokenStr)
-			if err != nil || claims.Role != "super_admin" {
+			if err != nil || claims.Role != "admin" {
 				http.Error(w, "forbidden", http.StatusForbidden)
 				return
 			}
