@@ -26,10 +26,26 @@ import (
 	"gorm.io/gorm"
 )
 
+// ctClientIface is the subset of ct.Client methods used by handlers.
+// It is unexported; any type whose method set covers these signatures satisfies it.
+type ctClientIface interface {
+	LoginUser(username, password string) (int, error)
+	GetPerson(id int) (*ct.Person, error)
+	GetParentsForChild(childID int) ([]int, error)
+	GetChildrenForParent(parentID int) ([]ct.Child, error)
+	CheckIn(childID, groupID int) error
+}
+
+// syncServiceIface is the subset of ctsync.Service methods used by handlers.
+type syncServiceIface interface {
+	Run(ctx context.Context) error
+	Groups() []ctsync.GroupConfig
+}
+
 type Handler struct {
-	ct                *ct.Client
+	ct                ctClientIface
 	db                *gorm.DB
-	syncSvc           *ctsync.Service
+	syncSvc           syncServiceIface
 	jwtSecret         []byte
 	frontendBase      string
 	localPassword     bool
@@ -41,7 +57,7 @@ type Handler struct {
 	adminEmails       map[string]struct{} // emails that always get "admin" role regardless of synced_staff
 }
 
-func New(ctClient *ct.Client, database *gorm.DB, syncSvc *ctsync.Service, jwtSecret []byte, frontendBase string) *Handler {
+func New(ctClient ctClientIface, database *gorm.DB, syncSvc syncServiceIface, jwtSecret []byte, frontendBase string) *Handler {
 	reportsDir := os.Getenv("REPORTS_DIR")
 	if reportsDir == "" {
 		reportsDir = "./reports"

@@ -39,7 +39,7 @@ describe('ChildCard – display', () => {
     const w = mount(ChildCard, {
       props: { item: { ...base, status: 'checked_in' }, variant: 'door' },
     })
-    expect(w.text()).toContain('In der Gruppe')
+    expect(w.text()).toContain('Eingecheckt')
   })
 
   it('renders "Noch nicht angemeldet" for empty status', () => {
@@ -87,15 +87,15 @@ describe('ChildCard – door variant', () => {
   it('shows Namensschild toggle button (tag not given)', () => {
     const w = mount(ChildCard, { props: { item: base, variant: 'door' } })
     expect(w.find('button').exists()).toBe(true)
-    expect(w.find('button').text()).toContain('Namensschild')
-    expect(w.find('button').text()).toContain('übergeben')
+    expect(w.find('button').text()).toContain('Namensschildausgabe')
   })
 
   it('shows Namensschild as received when tagReceived=true', () => {
     const w = mount(ChildCard, {
       props: { item: { ...base, tagReceived: true }, variant: 'door' },
     })
-    expect(w.find('button').text()).toContain('erhalten')
+    expect(w.find('button').text()).toContain('Namensschildausgabe')
+    expect(w.find('button').text()).toContain('✓')
   })
 
   it('shows toggle for checked_in status too', () => {
@@ -121,13 +121,13 @@ describe('ChildCard – volunteer variant', () => {
     expect(btns[1].text()).toBe('…')
   })
 
-  it('shows Eltern rufen + detail for checked_in', () => {
+  it('shows Check Out + detail for checked_in', () => {
     const w = mount(ChildCard, {
       props: { item: { ...base, status: 'checked_in', checkedInAt: '2026-04-08T10:30:00Z' }, variant: 'volunteer' },
     })
     const btns = w.findAll('button')
     expect(btns).toHaveLength(2)
-    expect(btns[0].text()).toContain('Eltern rufen')
+    expect(btns[0].text()).toContain('Check Out')
     expect(btns[1].text()).toBe('…')
   })
 
