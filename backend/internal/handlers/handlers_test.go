@@ -232,7 +232,9 @@ func TestAdminLogin_CTUserInStaff_ReturnsStaffRole(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body)
 	}
-	var resp struct{ Role string `json:"role"` }
+	var resp struct {
+		Role string `json:"role"`
+	}
 	json.NewDecoder(rr.Body).Decode(&resp)
 	if resp.Role != "volunteer" {
 		t.Errorf("expected role=volunteer, got %q", resp.Role)
