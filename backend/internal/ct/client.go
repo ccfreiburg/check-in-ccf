@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/http/cookiejar"
 	"strings"
 	"time"
 )
@@ -421,31 +422,29 @@ type GroupMemberEntry struct {
 }
 
 // GetGroupMemberTypes fetches and classifies group member types from CT masterdata.
-// Returns a map of typeID → "leader"|"coleader"|"deacon"|"member".
+// GetGroupMemberTypes fetches and classifies group member types from CT.
+// Returns a map of roleID → "leader"|"coleader"|"member"
 func (c *Client) GetGroupMemberTypes() (map[int]string, error) {
 	var resp struct {
-		Data struct {
-			GroupMemberTypes []struct {
-				ID   int    `json:"id"`
-				Name string `json:"name"`
-			} `json:"groupMemberTypes"`
+		Data []struct {
+			ID       int    `json:"id"`
+			Name     string `json:"name"`
+			IsLeader bool   `json:"isLeader"`
 		} `json:"data"`
 	}
-	if err := c.get("/groups/masterdata", &resp); err != nil {
+	if err := c.get("/group/roles", &resp); err != nil {
 		return nil, err
 	}
-	m := make(map[int]string, len(resp.Data.GroupMemberTypes))
-	for _, t := range resp.Data.GroupMemberTypes {
-		n := strings.ToLower(t.Name)
+	m := make(map[int]string, len(resp.Data))
+	for _, r := range resp.Data {
+		n := strings.ToLower(r.Name)
 		switch {
-		case strings.Contains(n, "co") && (strings.Contains(n, "leiter") || strings.Contains(n, "leader")):
-			m[t.ID] = "coleader"
-		case strings.Contains(n, "leiter") || strings.Contains(n, "leader"):
-			m[t.ID] = "leader"
-		case strings.Contains(n, "diakon") || strings.Contains(n, "deacon"):
-			m[t.ID] = "deacon"
+		case !r.IsLeader:
+			m[r.ID] = "member"
+		case strings.HasPrefix(n, "co-") || strings.HasPrefix(n, "co "):
+			m[r.ID] = "coleader"
 		default:
-			m[t.ID] = "member"
+			m[r.ID] = "leader"
 		}
 	}
 	return m, nil
@@ -455,8 +454,8 @@ func (c *Client) GetGroupMemberTypes() (map[int]string, error) {
 func (c *Client) GetGroupMembersWithTypes(groupID int, types map[int]string) ([]GroupMemberEntry, error) {
 	type memberPage struct {
 		Data []struct {
-			PersonID          int `json:"personId"`
-			GroupMemberTypeID int `json:"groupMemberTypeId"`
+			PersonID        int `json:"personId"`
+			GroupTypeRoleID int `json:"groupTypeRoleId"`
 		} `json:"data"`
 		Meta struct {
 			Pagination struct {
@@ -475,7 +474,7 @@ func (c *Client) GetGroupMembersWithTypes(groupID int, types map[int]string) ([]
 			return nil, fmt.Errorf("members with types unmarshal: %w", err)
 		}
 		for _, m := range resp.Data {
-			typeName := types[m.GroupMemberTypeID]
+			typeName := types[m.GroupTypeRoleID]
 			if typeName == "" {
 				typeName = "member"
 			}
@@ -490,21 +489,27 @@ func (c *Client) GetGroupMembersWithTypes(groupID int, types map[int]string) ([]
 
 // LoginUser authenticates a ChurchTools user with email/username and password.
 // Returns the CT person ID on success, or an error if credentials are invalid.
+// Uses a per-call HTTP client with a cookie jar so the session cookie from the
+// login response is automatically sent in any follow-up requests.
 func (c *Client) LoginUser(username, password string) (int, error) {
-	url := c.baseURL + "/login"
+	// Per-call client preserves the session cookie across follow-up requests.
+	jar, _ := cookiejar.New(nil)
+	client := &http.Client{Timeout: 15 * time.Second, Jar: jar}
+
+	loginURL := c.baseURL + "/login"
 	body, _ := json.Marshal(map[string]any{
 		"username":    username,
 		"password":    password,
 		"remember_me": false,
 	})
-	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body))
+	req, err := http.NewRequest(http.MethodPost, loginURL, bytes.NewReader(body))
 	if err != nil {
 		return 0, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 	// No API-token auth header — this is a user-credential login.
-	resp, err := c.httpClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return 0, fmt.Errorf("CT login: %w", err)
 	}
@@ -527,8 +532,30 @@ func (c *Client) LoginUser(username, password string) (int, error) {
 	if id == 0 {
 		id = result.Data.PersonID
 	}
-	if id == 0 {
-		return 0, fmt.Errorf("CT login: could not determine person ID from response")
+	if id != 0 {
+		return id, nil
 	}
-	return id, nil
+
+	// Fallback: some CT versions don't include personId in the login response.
+	// Use the session cookie to call /api/persons/me.
+	slog.Debug("CT login: personId not in response, falling back to /api/persons/me")
+	meReq, err := http.NewRequest(http.MethodGet, c.baseURL+"/persons/me", nil)
+	if err != nil {
+		return 0, fmt.Errorf("CT login: could not build /persons/me request: %w", err)
+	}
+	meReq.Header.Set("Accept", "application/json")
+	meResp, err := client.Do(meReq)
+	if err != nil {
+		return 0, fmt.Errorf("CT login: /persons/me request failed: %w", err)
+	}
+	defer meResp.Body.Close()
+	var me struct {
+		Data struct {
+			ID int `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(meResp.Body).Decode(&me); err != nil || me.Data.ID == 0 {
+		return 0, fmt.Errorf("CT login: could not determine person ID")
+	}
+	return me.Data.ID, nil
 }

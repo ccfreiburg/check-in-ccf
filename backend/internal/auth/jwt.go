@@ -19,7 +19,7 @@ type Claims struct {
 	jwt.RegisteredClaims
 }
 
-func NewAdminToken(secret []byte) (string, error) {
+func NewVolunteerToken(secret []byte) (string, error) {
 	claims := Claims{
 		Role: "volunteer",
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -30,7 +30,7 @@ func NewAdminToken(secret []byte) (string, error) {
 	return jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(secret)
 }
 
-func NewSuperAdminToken(secret []byte) (string, error) {
+func NewAdminToken(secret []byte) (string, error) {
 	claims := Claims{
 		Role: "admin",
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -70,7 +70,7 @@ func ParseToken(secret []byte, tokenStr string) (*Claims, error) {
 	return claims, nil
 }
 
-func AdminMiddleware(secret []byte) func(http.Handler) http.Handler {
+func VolunteerMiddleware(secret []byte) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			header := r.Header.Get("Authorization")
@@ -90,7 +90,7 @@ func AdminMiddleware(secret []byte) func(http.Handler) http.Handler {
 	}
 }
 
-func SuperAdminMiddleware(secret []byte) func(http.Handler) http.Handler {
+func AdminMiddleware(secret []byte) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			header := r.Header.Get("Authorization")

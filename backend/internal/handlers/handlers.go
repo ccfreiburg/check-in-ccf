@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	webpush "github.com/SherClockHolmes/webpush-go"
@@ -26,17 +27,18 @@ import (
 )
 
 type Handler struct {
-	ct                 *ct.Client
-	db                 *gorm.DB
-	syncSvc            *ctsync.Service
-	jwtSecret          []byte
-	frontendBase       string
-	localPassword      bool
-	adminPassword      string
-	superAdminPassword string
-	vapidPrivateKey    string
-	vapidPublicKey     string
-	reportsDir         string
+	ct                *ct.Client
+	db                *gorm.DB
+	syncSvc           *ctsync.Service
+	jwtSecret         []byte
+	frontendBase      string
+	localPassword     bool
+	volunteerPassword string
+	adminPassword     string
+	vapidPrivateKey   string
+	vapidPublicKey    string
+	reportsDir        string
+	adminEmails       map[string]struct{} // emails that always get "admin" role regardless of synced_staff
 }
 
 func New(ctClient *ct.Client, database *gorm.DB, syncSvc *ctsync.Service, jwtSecret []byte, frontendBase string) *Handler {
@@ -44,18 +46,26 @@ func New(ctClient *ct.Client, database *gorm.DB, syncSvc *ctsync.Service, jwtSec
 	if reportsDir == "" {
 		reportsDir = "./reports"
 	}
+	adminEmails := map[string]struct{}{}
+	for _, raw := range strings.Split(os.Getenv("CT_ADMIN_PERSONS"), ",") {
+		raw = strings.TrimSpace(raw)
+		if raw != "" {
+			adminEmails[strings.ToLower(raw)] = struct{}{}
+		}
+	}
 	return &Handler{
-		ct:                 ctClient,
-		db:                 database,
-		syncSvc:            syncSvc,
-		jwtSecret:          jwtSecret,
-		frontendBase:       frontendBase,
-		localPassword:      os.Getenv("LOCAL_PASSWORD") == "true",
-		adminPassword:      os.Getenv("ADMIN_PASSWORD"),
-		superAdminPassword: os.Getenv("SUPER_ADMIN_PASSWORD"),
-		vapidPrivateKey:    os.Getenv("VAPID_PRIVATE_KEY"),
-		vapidPublicKey:     os.Getenv("VAPID_PUBLIC_KEY"),
-		reportsDir:         reportsDir,
+		ct:                ctClient,
+		db:                database,
+		syncSvc:           syncSvc,
+		jwtSecret:         jwtSecret,
+		frontendBase:      frontendBase,
+		localPassword:     os.Getenv("LOCAL_PASSWORD") == "true",
+		volunteerPassword: os.Getenv("VOLUNTEER_PASSWORD"),
+		adminPassword:     os.Getenv("ADMIN_PASSWORD"),
+		vapidPrivateKey:   os.Getenv("VAPID_PRIVATE_KEY"),
+		vapidPublicKey:    os.Getenv("VAPID_PUBLIC_KEY"),
+		reportsDir:        reportsDir,
+		adminEmails:       adminEmails,
 	}
 }
 
@@ -76,9 +86,9 @@ func (h *Handler) AdminLogin(w http.ResponseWriter, r *http.Request) {
 	if h.localPassword {
 		// Local-password mode: match against env vars, ignore username.
 		switch {
-		case h.superAdminPassword != "" && req.Password == h.superAdminPassword:
-			role = "admin"
 		case h.adminPassword != "" && req.Password == h.adminPassword:
+			role = "admin"
+		case h.volunteerPassword != "" && req.Password == h.volunteerPassword:
 			role = "volunteer"
 		default:
 			http.Error(w, "forbidden", http.StatusForbidden)
@@ -93,16 +103,25 @@ func (h *Handler) AdminLogin(w http.ResponseWriter, r *http.Request) {
 		ctPersonID, err := h.ct.LoginUser(req.Username, req.Password)
 		if err != nil {
 			slog.Warn("CT login failed", "username", req.Username, "err", err)
-			http.Error(w, "forbidden", http.StatusForbidden)
+			http.Error(w, "forbidden: CT authentication failed", http.StatusForbidden)
 			return
 		}
-		var staff localdb.SyncedStaff
-		if err := h.db.Where("ct_id = ?", ctPersonID).First(&staff).Error; err != nil {
-			slog.Warn("CT login: authenticated but no staff role assigned", "ctPersonId", ctPersonID)
-			http.Error(w, "forbidden", http.StatusForbidden)
-			return
+		_ = ctPersonID // person ID not needed; email is used for role lookup
+
+		// CT_ADMIN_PERSONS: emails that always get admin regardless of synced_staff.
+		_, emailMatch := h.adminEmails[strings.ToLower(req.Username)]
+		if emailMatch {
+			role = "admin"
+		} else {
+			// Look up role by email in synced_staff (populated during CT sync).
+			var staff localdb.SyncedStaff
+			if err := h.db.Where("LOWER(email) = LOWER(?)", req.Username).First(&staff).Error; err != nil {
+				slog.Warn("CT login: authenticated but no staff role assigned", "email", req.Username)
+				http.Error(w, "forbidden: no role assigned — not a member of any configured group", http.StatusForbidden)
+				return
+			}
+			role = staff.Role
 		}
-		role = staff.Role
 	}
 
 	var (
@@ -111,9 +130,9 @@ func (h *Handler) AdminLogin(w http.ResponseWriter, r *http.Request) {
 	)
 	switch role {
 	case "admin":
-		token, err = auth.NewSuperAdminToken(h.jwtSecret)
-	default:
 		token, err = auth.NewAdminToken(h.jwtSecret)
+	default:
+		token, err = auth.NewVolunteerToken(h.jwtSecret)
 	}
 	if err != nil {
 		http.Error(w, "internal server error", http.StatusInternalServerError)
@@ -246,6 +265,14 @@ func (h *Handler) GetParentDetail(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		slog.Warn("GetParentDetail: could not get children", "parentId", parentID, "err", err)
 		children = nil
+	}
+	// Override group info from the local sync DB (CT client returns hardcoded group).
+	for i := range children {
+		var m localdb.SyncedGroupMembership
+		if err := h.db.Where("person_ct_id = ?", children[i].ID).Limit(1).Find(&m).Error; err == nil && m.GroupID != 0 {
+			children[i].GroupID = m.GroupID
+			children[i].GroupName = m.GroupName
+		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"parent": parent, "children": children})
 }
@@ -739,7 +766,7 @@ func (h *Handler) RegisterChild(w http.ResponseWriter, r *http.Request) {
 
 // SetCheckInStatus overrides a check-in record's status to any valid value.
 // Sending status="" deletes the record entirely (full reset).
-// Only accessible to super_admin tokens.
+// Only accessible to admin tokens.
 func (h *Handler) SetCheckInStatus(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
 	if err != nil {

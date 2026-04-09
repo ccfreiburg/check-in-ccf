@@ -344,7 +344,7 @@ func (s *Service) syncStaff(ctx context.Context) error {
 		}
 		for _, m := range members {
 			switch m.TypeName {
-			case "leader", "deacon":
+			case "leader":
 				promote(m.PersonID, "admin")
 			case "coleader":
 				promote(m.PersonID, "volunteer")

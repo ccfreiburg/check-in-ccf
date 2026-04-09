@@ -47,7 +47,7 @@ const router = createRouter({
     {
       path: '/admin/settings',
       component: () => import('../views/AdminView.vue'),
-      meta: { requiresAuth: true },
+      meta: { requiresAuth: true, requiresAdmin: true },
     },
     {
       path: '/admin/checkins/:id',
@@ -75,6 +75,9 @@ router.beforeEach((to) => {
 
   if (to.meta.requiresAuth && !auth.isLoggedIn) {
     return '/login'
+  }
+  if (to.meta.requiresAdmin && !auth.isAdmin) {
+    return '/admin/today'
   }
 })
 

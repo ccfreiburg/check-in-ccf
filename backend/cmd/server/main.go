@@ -103,9 +103,9 @@ func main() {
 		AllowCredentials: true,
 	}))
 
-	// Admin routes (require admin token via Authorization header)
+	// Volunteer routes (require volunteer or admin token via Authorization header)
 	r.Group(func(r chi.Router) {
-		r.Use(auth.AdminMiddleware(jwtSecret))
+		r.Use(auth.VolunteerMiddleware(jwtSecret))
 		r.Get("/api/admin/children", h.ListChildren)
 		r.Get("/api/admin/children/{id}/parent", h.GetParentDetail)
 		r.Get("/api/admin/children/{id}/parents", h.GetChildParents)
@@ -125,9 +125,9 @@ func main() {
 		r.Get("/api/admin/reports/{filename}", h.GetReport)
 	})
 
-	// Super-admin routes (require super_admin token)
+	// Admin-only routes (require admin token)
 	r.Group(func(r chi.Router) {
-		r.Use(auth.SuperAdminMiddleware(jwtSecret))
+		r.Use(auth.AdminMiddleware(jwtSecret))
 		r.Post("/api/admin/checkins/{id}/set-status", h.SetCheckInStatus)
 	})
 

@@ -108,16 +108,18 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { setLocale as persistLocale } from '../i18n'
+import { useAuthStore } from '../stores/auth'
 
 defineProps<{ title: string }>()
 const emit = defineEmits<{ logout: [] }>()
 
 const { t, locale } = useI18n()
 const route = useRoute()
+const auth = useAuthStore()
 const menuOpen = ref(false)
 const langOpen = ref(false)
 
@@ -131,12 +133,15 @@ function setLocale(code: string) {
   langOpen.value = false
 }
 
-const navLinks = [
-  { to: '/admin',          labelKey: 'nav.first_registration' },
-  { to: '/admin/tags',     labelKey: 'nav.name_tag_handout'   },
-  { to: '/admin/today',    labelKey: 'nav.children_today'     },
-  { to: '/admin/settings', labelKey: 'nav.admin'              },
+const allNavLinks = [
+  { to: '/admin',          labelKey: 'nav.first_registration', adminOnly: false },
+  { to: '/admin/tags',     labelKey: 'nav.name_tag_handout',   adminOnly: false },
+  { to: '/admin/today',    labelKey: 'nav.children_today',     adminOnly: false },
+  { to: '/admin/settings', labelKey: 'nav.admin',              adminOnly: true  },
 ]
+const navLinks = computed(() =>
+  allNavLinks.filter(l => !l.adminOnly || auth.isAdmin)
+)
 </script>
 
 <style scoped>
