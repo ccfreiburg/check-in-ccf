@@ -19,6 +19,7 @@ const router = createRouter({
     },
     {
       path: '/admin',
+      name: 'first-registration',
       component: () => import('../views/FirstRegistrationView.vue'),
       meta: { requiresAuth: true },
     },
@@ -32,6 +33,12 @@ const router = createRouter({
       path: '/admin/parents/:id',
       name: 'parent-by-parent',
       component: () => import('../views/ParentDetailView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
+      path: '/admin/guests/new',
+      name: 'guest-new',
+      component: () => import('../views/NewGuestView.vue'),
       meta: { requiresAuth: true },
     },
     {

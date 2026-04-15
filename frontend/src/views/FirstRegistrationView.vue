@@ -97,6 +97,18 @@
           {{ t('first_registration.no_children') }}
         </li>
       </ul>
+
+      <!-- FAB: add new guest -->
+      <div class="sticky bottom-6 flex justify-end mt-4 pointer-events-none">
+        <button
+          @click="router.push({ name: 'guest-new' })"
+          class="pointer-events-auto w-14 h-14 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white rounded-full shadow-lg flex items-center justify-center transition"
+        >
+          <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4" />
+          </svg>
+        </button>
+      </div>
     </div>
   </div>
 </template>
