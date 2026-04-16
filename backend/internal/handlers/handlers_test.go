@@ -829,9 +829,10 @@ func TestClearNotify_NotFound_Returns404(t *testing.T) {
 
 func TestGetParentDetailByParentID_Found(t *testing.T) {
 	h, database := newTestHandler(t, &mockCT{}, &mockSync{})
-	database.Create(&localdb.SyncedPerson{CTID: 100, FirstName: "Jane", LastName: "Doe", IsParent: true})
+	p := &localdb.SyncedPerson{CTID: 100, FirstName: "Jane", LastName: "Doe", IsParent: true}
+	database.Create(p)
 	req := httptest.NewRequest("GET", "/", nil)
-	req = withParam(req, "id", "100")
+	req = withParam(req, "id", fmt.Sprint(p.ID))
 	rr := httptest.NewRecorder()
 	h.GetParentDetailByParentID(rr, req)
 	if rr.Code != http.StatusOK {
@@ -864,9 +865,11 @@ func TestGetParentDetailByParentID_NotFound_Returns404(t *testing.T) {
 func TestGetChildParents_ReturnsLinkedParents(t *testing.T) {
 	h, database := newTestHandler(t, &mockCT{}, &mockSync{})
 	database.Create(&localdb.SyncedPerson{CTID: 201, FirstName: "Parent", LastName: "One", IsParent: true})
+	child := &localdb.SyncedPerson{CTID: 301, FirstName: "Child", LastName: "One", IsChild: true}
+	database.Create(child)
 	database.Create(&localdb.SyncedRelationship{ParentCTID: 201, ChildCTID: 301})
 	req := httptest.NewRequest("GET", "/", nil)
-	req = withParam(req, "id", "301")
+	req = withParam(req, "id", fmt.Sprint(child.ID))
 	rr := httptest.NewRecorder()
 	h.GetChildParents(rr, req)
 	if rr.Code != http.StatusOK {
@@ -882,14 +885,13 @@ func TestGetChildParents_ReturnsLinkedParents(t *testing.T) {
 // GetParentDetail (CT-dependent)
 
 func TestGetParentDetail_ReturnsParentAndChildren(t *testing.T) {
-	ctMock := &mockCT{
-		parentIDs: []int{200},
-		person:    &ct.Person{ID: 200, FirstName: "Max", LastName: "Schmidt"},
-		children:  []ct.Child{{Person: ct.Person{ID: 300, FirstName: "Anna", LastName: "Schmidt"}, GroupID: 1, GroupName: "KGruppe"}},
-	}
-	h, _ := newTestHandler(t, ctMock, &mockSync{})
+	h, database := newTestHandler(t, &mockCT{}, &mockSync{})
+	database.Create(&localdb.SyncedPerson{CTID: 200, FirstName: "Max", LastName: "Schmidt", IsParent: true})
+	child := &localdb.SyncedPerson{CTID: 300, FirstName: "Anna", LastName: "Schmidt", IsChild: true}
+	database.Create(child)
+	database.Create(&localdb.SyncedRelationship{ParentCTID: 200, ChildCTID: 300})
 	req := httptest.NewRequest("GET", "/", nil)
-	req = withParam(req, "id", "300")
+	req = withParam(req, "id", fmt.Sprint(child.ID))
 	rr := httptest.NewRecorder()
 	h.GetParentDetail(rr, req)
 	if rr.Code != http.StatusOK {
@@ -905,12 +907,10 @@ func TestGetParentDetail_ReturnsParentAndChildren(t *testing.T) {
 // GetParentCheckinPage (CT-dependent)
 
 func TestGetParentCheckinPage_ValidToken_ReturnsPage(t *testing.T) {
-	ctMock := &mockCT{
-		person:   &ct.Person{ID: 7, FirstName: "Test", LastName: "Parent"},
-		children: []ct.Child{{Person: ct.Person{ID: 50, FirstName: "Kid"}, GroupID: 1, GroupName: "G"}},
-	}
-	h, _ := newTestHandler(t, ctMock, &mockSync{})
-	tok := parentBearerToken(t, 7)
+	h, database := newTestHandler(t, &mockCT{}, &mockSync{})
+	parent := &localdb.SyncedPerson{CTID: 7, FirstName: "Test", LastName: "Parent", IsParent: true}
+	database.Create(parent)
+	tok := parentBearerToken(t, int(parent.ID))
 	req := httptest.NewRequest("GET", "/", nil)
 	req = withParam(req, "token", tok)
 	rr := httptest.NewRecorder()
@@ -934,33 +934,37 @@ func TestGetParentCheckinPage_InvalidToken_Returns401(t *testing.T) {
 // RegisterChild (CT-dependent)
 
 func TestRegisterChild_Valid_CreatesPendingRecord(t *testing.T) {
-	ctMock := &mockCT{
-		children: []ct.Child{{Person: ct.Person{ID: 55, FirstName: "Kid"}, GroupID: 1, GroupName: "G"}},
-	}
-	h, database := newTestHandler(t, ctMock, &mockSync{})
-	tok := parentBearerToken(t, 10)
+	h, database := newTestHandler(t, &mockCT{}, &mockSync{})
+	par := &localdb.SyncedPerson{CTID: 10, FirstName: "Test", LastName: "Parent", IsParent: true}
+	database.Create(par)
+	child := &localdb.SyncedPerson{CTID: 55, FirstName: "Kid", LastName: "Test", IsChild: true}
+	database.Create(child)
+	database.Create(&localdb.SyncedRelationship{ParentCTID: 10, ChildCTID: 55})
+	tok := parentBearerToken(t, int(par.ID))
 	req := httptest.NewRequest("POST", "/", nil)
-	req = withParams(req, map[string]string{"token": tok, "childId": "55"})
+	req = withParams(req, map[string]string{"token": tok, "childId": fmt.Sprint(child.ID)})
 	rr := httptest.NewRecorder()
 	h.RegisterChild(rr, req)
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body)
 	}
 	var count int64
-	database.Model(&localdb.CheckIn{}).Where("child_id = ? AND status = ?", 55, "pending").Count(&count)
+	database.Model(&localdb.CheckIn{}).Where("child_id = ? AND status = ?", child.ID, "pending").Count(&count)
 	if count != 1 {
 		t.Errorf("expected 1 pending check-in record, got %d", count)
 	}
 }
 
 func TestRegisterChild_ChildNotBelongingToParent_Returns403(t *testing.T) {
-	ctMock := &mockCT{
-		children: []ct.Child{{Person: ct.Person{ID: 99}}},
-	}
-	h, _ := newTestHandler(t, ctMock, &mockSync{})
-	tok := parentBearerToken(t, 10)
+	h, database := newTestHandler(t, &mockCT{}, &mockSync{})
+	par := &localdb.SyncedPerson{CTID: 10, FirstName: "Test", LastName: "Parent", IsParent: true}
+	database.Create(par)
+	child := &localdb.SyncedPerson{CTID: 99, FirstName: "Other", LastName: "Kid", IsChild: true}
+	database.Create(child)
+	// No relationship between parent and child.
+	tok := parentBearerToken(t, int(par.ID))
 	req := httptest.NewRequest("POST", "/", nil)
-	req = withParams(req, map[string]string{"token": tok, "childId": "999"})
+	req = withParams(req, map[string]string{"token": tok, "childId": fmt.Sprint(child.ID)})
 	rr := httptest.NewRecorder()
 	h.RegisterChild(rr, req)
 	if rr.Code != http.StatusForbidden {
@@ -987,10 +991,11 @@ func TestListParents_FilterBySex(t *testing.T) {
 // GenerateQR
 
 func TestGenerateQR_ReturnsQRCodePNG(t *testing.T) {
-	ctMock := &mockCT{parentIDs: []int{500}}
-	h, _ := newTestHandler(t, ctMock, &mockSync{})
+	h, database := newTestHandler(t, &mockCT{}, &mockSync{})
+	p := &localdb.SyncedPerson{CTID: 500, FirstName: "Test", LastName: "Parent", IsParent: true}
+	database.Create(p)
 	req := httptest.NewRequest("POST", "/", nil)
-	req = withParam(req, "id", "300")
+	req = withParam(req, "id", fmt.Sprint(p.ID))
 	rr := httptest.NewRecorder()
 	h.GenerateQR(rr, req)
 	if rr.Code != http.StatusOK {
@@ -1013,10 +1018,11 @@ func TestGenerateQR_InvalidID_Returns400(t *testing.T) {
 }
 
 func TestGenerateQR_ReturnsCheckinURLHeader(t *testing.T) {
-	ctMock := &mockCT{parentIDs: []int{42}}
-	h, _ := newTestHandler(t, ctMock, &mockSync{})
+	h, database := newTestHandler(t, &mockCT{}, &mockSync{})
+	p := &localdb.SyncedPerson{CTID: 42, FirstName: "Test", LastName: "Parent", IsParent: true}
+	database.Create(p)
 	req := httptest.NewRequest("POST", "/", nil)
-	req = withParam(req, "id", "100")
+	req = withParam(req, "id", fmt.Sprint(p.ID))
 	rr := httptest.NewRecorder()
 	h.GenerateQR(rr, req)
 	if rr.Code != http.StatusOK {
@@ -1106,15 +1112,16 @@ func TestGetParentDetail_InvalidID_Returns400(t *testing.T) {
 	}
 }
 
-func TestGetParentDetail_CTError_Returns502(t *testing.T) {
-	ctMock := &mockCT{parentIDsErr: fmt.Errorf("ct unavailable")}
-	h, _ := newTestHandler(t, ctMock, &mockSync{})
+func TestGetParentDetail_NoRelationship_Returns404(t *testing.T) {
+	h, database := newTestHandler(t, &mockCT{}, &mockSync{})
+	child := &localdb.SyncedPerson{CTID: 100, FirstName: "Orphan", IsChild: true}
+	database.Create(child)
 	req := httptest.NewRequest("GET", "/", nil)
-	req = withParam(req, "id", "100")
+	req = withParam(req, "id", fmt.Sprint(child.ID))
 	rr := httptest.NewRecorder()
 	h.GetParentDetail(rr, req)
-	if rr.Code != http.StatusBadGateway {
-		t.Errorf("expected 502, got %d", rr.Code)
+	if rr.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d", rr.Code)
 	}
 }
 
@@ -1133,12 +1140,13 @@ func TestGetParentDetailByParentID_InvalidID_Returns400(t *testing.T) {
 
 func TestGetParentDetailByParentID_WithChildren(t *testing.T) {
 	h, database := newTestHandler(t, &mockCT{}, &mockSync{})
-	database.Create(&localdb.SyncedPerson{CTID: 200, FirstName: "Parent", IsParent: true})
+	parent := &localdb.SyncedPerson{CTID: 200, FirstName: "Parent", IsParent: true}
+	database.Create(parent)
 	database.Create(&localdb.SyncedPerson{CTID: 201, FirstName: "Child", IsChild: true})
 	database.Create(&localdb.SyncedRelationship{ParentCTID: 200, ChildCTID: 201})
 	database.Create(&localdb.SyncedGroupMembership{PersonCTID: 201, GroupID: 3, GroupName: "Teens"})
 	req := httptest.NewRequest("GET", "/", nil)
-	req = withParam(req, "id", "200")
+	req = withParam(req, "id", fmt.Sprint(parent.ID))
 	rr := httptest.NewRecorder()
 	h.GetParentDetailByParentID(rr, req)
 	if rr.Code != http.StatusOK {
@@ -1275,16 +1283,15 @@ func TestSendParentMessage_NoSubscription_Returns404(t *testing.T) {
 
 // GetParentCheckinPage CT error
 
-func TestGetParentCheckinPage_CTError_Returns502(t *testing.T) {
-	ctMock := &mockCT{personErr: fmt.Errorf("CT down")}
-	h, _ := newTestHandler(t, ctMock, &mockSync{})
-	tok := parentBearerToken(t, 7)
+func TestGetParentCheckinPage_ParentNotFound_Returns404(t *testing.T) {
+	h, _ := newTestHandler(t, &mockCT{}, &mockSync{})
+	tok := parentBearerToken(t, 9999)
 	req := httptest.NewRequest("GET", "/", nil)
 	req = withParam(req, "token", tok)
 	rr := httptest.NewRecorder()
 	h.GetParentCheckinPage(rr, req)
-	if rr.Code != http.StatusBadGateway {
-		t.Errorf("expected 502, got %d", rr.Code)
+	if rr.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d", rr.Code)
 	}
 }
 
@@ -1304,15 +1311,14 @@ func TestRegisterChild_InvalidChildID_Returns400(t *testing.T) {
 
 // GetParentDetail no parents falls back to self
 
-func TestGetParentDetail_NoParents_UsesSelfAsParent(t *testing.T) {
-	ctMock := &mockCT{
-		parentIDs: []int{},
-		person:    &ct.Person{ID: 42, FirstName: "Solo", LastName: "Parent"},
-		children:  []ct.Child{},
-	}
-	h, _ := newTestHandler(t, ctMock, &mockSync{})
+func TestGetParentDetail_ReturnsParentByChildID(t *testing.T) {
+	h, database := newTestHandler(t, &mockCT{}, &mockSync{})
+	database.Create(&localdb.SyncedPerson{CTID: 42, FirstName: "Solo", LastName: "Parent", IsParent: true})
+	child := &localdb.SyncedPerson{CTID: 88, FirstName: "Kid", LastName: "Parent", IsChild: true}
+	database.Create(child)
+	database.Create(&localdb.SyncedRelationship{ParentCTID: 42, ChildCTID: 88})
 	req := httptest.NewRequest("GET", "/", nil)
-	req = withParam(req, "id", "42")
+	req = withParam(req, "id", fmt.Sprint(child.ID))
 	rr := httptest.NewRecorder()
 	h.GetParentDetail(rr, req)
 	if rr.Code != http.StatusOK {
@@ -1419,9 +1425,10 @@ func TestEndEvent_MultipleRecords_ReportHasParentData(t *testing.T) {
 	h, database := newTestHandler(t, &mockCT{}, &mockSync{})
 	today := localdb.Today()
 	// Insert a parent synced person.
-	database.Create(&localdb.SyncedPerson{CTID: 700, FirstName: "Parent", LastName: "Test", IsParent: true})
-	// Insert check-in with that parent.
-	database.Create(&localdb.CheckIn{EventDate: today, ChildID: 71, FirstName: "Kid", LastName: "Test", Status: "pending", ParentID: 700})
+	par := &localdb.SyncedPerson{CTID: 700, FirstName: "Parent", LastName: "Test", IsParent: true}
+	database.Create(par)
+	// Insert check-in with that parent's GORM ID.
+	database.Create(&localdb.CheckIn{EventDate: today, ChildID: 71, FirstName: "Kid", LastName: "Test", Status: "pending", ParentID: int(par.ID)})
 	req := httptest.NewRequest("POST", "/", nil)
 	rr := httptest.NewRecorder()
 	h.EndEvent(rr, req)

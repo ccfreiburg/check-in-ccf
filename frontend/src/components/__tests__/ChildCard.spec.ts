@@ -144,6 +144,48 @@ describe('ChildCard – volunteer variant', () => {
   })
 })
 
+describe('ChildCard – guest badge', () => {
+  it('shows Gast badge when isGuest=true', () => {
+    const w = mount(ChildCard, {
+      props: { item: { ...base, isGuest: true }, variant: 'admin' },
+    })
+    expect(w.text()).toContain('Gast')
+  })
+
+  it('does not show Gast badge when isGuest=false', () => {
+    const w = mount(ChildCard, {
+      props: { item: { ...base, isGuest: false }, variant: 'admin' },
+    })
+    expect(w.text()).not.toContain('Gast')
+  })
+
+  it('does not show Gast badge when isGuest is undefined', () => {
+    const w = mount(ChildCard, { props: { item: base, variant: 'admin' } })
+    expect(w.text()).not.toContain('Gast')
+  })
+
+  it('shows Gast badge in volunteer variant too', () => {
+    const w = mount(ChildCard, {
+      props: { item: { ...base, isGuest: true }, variant: 'volunteer' },
+    })
+    expect(w.text()).toContain('Gast')
+  })
+
+  it('shows Gast badge in door variant', () => {
+    const w = mount(ChildCard, {
+      props: { item: { ...base, isGuest: true }, variant: 'door' },
+    })
+    expect(w.text()).toContain('Gast')
+  })
+
+  it('shows Gast badge in parent variant', () => {
+    const w = mount(ChildCard, {
+      props: { item: { ...base, status: '', isGuest: true }, variant: 'parent' },
+    })
+    expect(w.text()).toContain('Gast')
+  })
+})
+
 describe('ChildCard – admin variant', () => {
   it('renders Check In + detail = 2 buttons for pending', () => {
     const w = mount(ChildCard, { props: { item: base, variant: 'admin' } })
