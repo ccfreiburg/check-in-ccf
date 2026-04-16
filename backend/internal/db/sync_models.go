@@ -8,11 +8,13 @@ type Setting struct {
 	Value string
 }
 
-// SyncedPerson is a person record synced from ChurchTools.
-// It is updated on every sync; never written to CT.
+// SyncedPerson is a person record synced from ChurchTools (or manually created for guests).
+// It is updated on every CT sync for non-guest rows; guest rows (IsGuest=true) are never
+// touched by CT sync.
+// For guests, CTID = guestCTIDOffset + local gorm ID, guaranteeing no collision with real CT IDs.
 type SyncedPerson struct {
 	gorm.Model
-	CTID        int `gorm:"uniqueIndex;column:ct_id"`
+	CTID        int `gorm:"index;column:ct_id"`
 	FirstName   string
 	LastName    string
 	Birthdate   string
@@ -22,6 +24,7 @@ type SyncedPerson struct {
 	Sex         string // "male", "female", or ""
 	IsChild     bool
 	IsParent    bool
+	IsGuest     bool // true for manually registered guest families (not in ChurchTools)
 }
 
 // SyncedGroupMembership links a child to a ChurchTools group.

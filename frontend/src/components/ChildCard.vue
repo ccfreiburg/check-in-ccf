@@ -5,6 +5,7 @@
       <div>
         <p class="font-semibold text-gray-900 text-base">
           {{ item.firstName }} {{ item.lastName }}
+          <span v-if="item.isGuest" class="ml-1 text-xs font-semibold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">Gast</span>
         </p>
         <p class="text-sm text-gray-500">
           {{ item.groupName }}

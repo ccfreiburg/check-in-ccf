@@ -42,6 +42,12 @@ const router = createRouter({
       meta: { requiresAuth: true },
     },
     {
+      path: '/admin/guests/:id/edit',
+      name: 'guest-edit',
+      component: () => import('../views/NewGuestView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
       path: '/admin/today',
       component: () => import('../views/ChildrenTodayView.vue'),
       meta: { requiresAuth: true },

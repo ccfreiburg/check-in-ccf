@@ -60,6 +60,7 @@ function toCardItem(r: CheckInRecord): ChildCardItem {
     status: r.Status,
     tagReceived: r.TagReceived,
     checkedInAt: r.CheckedInAt,
+    isGuest: r.IsGuest,
   }
 }
 

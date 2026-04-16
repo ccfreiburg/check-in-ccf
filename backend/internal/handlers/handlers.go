@@ -18,7 +18,6 @@ import (
 
 	webpush "github.com/SherClockHolmes/webpush-go"
 	"github.com/ccf/check-in/backend/internal/auth"
-	"github.com/ccf/check-in/backend/internal/ct"
 	"github.com/ccf/check-in/backend/internal/ctsync"
 	localdb "github.com/ccf/check-in/backend/internal/db"
 	"github.com/go-chi/chi/v5"
@@ -30,9 +29,6 @@ import (
 // It is unexported; any type whose method set covers these signatures satisfies it.
 type ctClientIface interface {
 	LoginUser(username, password string) (int, error)
-	GetPerson(id int) (*ct.Person, error)
-	GetParentsForChild(childID int) ([]int, error)
-	GetChildrenForParent(parentID int) ([]ct.Child, error)
 	CheckIn(childID, groupID int) error
 }
 
@@ -161,9 +157,10 @@ func (h *Handler) AdminLogin(w http.ResponseWriter, r *http.Request) {
 
 // ListChildren returns synced children who have at least one parent relationship.
 // Children without a linked parent cannot receive a QR code and are omitted.
+// Returns local gorm_id as "id".
 func (h *Handler) ListChildren(w http.ResponseWriter, r *http.Request) {
 	type row struct {
-		CTID      int    `json:"id"`
+		ID        uint   `json:"id"` // local gorm_id
 		FirstName string `json:"firstName"`
 		LastName  string `json:"lastName"`
 		Birthdate string `json:"birthdate,omitempty"`
@@ -173,165 +170,118 @@ func (h *Handler) ListChildren(w http.ResponseWriter, r *http.Request) {
 		HasMother bool   `json:"hasMother"`
 	}
 
-	// Subquery: child CT IDs that have at least one parent relationship.
-	var childIDs []int
-	h.db.Model(&localdb.SyncedRelationship{}).
-		Distinct("child_ct_id").
-		Pluck("child_ct_id", &childIDs)
+	var persons []localdb.SyncedPerson
+	h.db.Where("is_child = ?", true).Order("last_name, first_name").Find(&persons)
 
-	if len(childIDs) == 0 {
+	if len(persons) == 0 {
 		writeJSON(w, http.StatusOK, []row{})
 		return
 	}
 
-	// Load persons and their primary group membership.
-	var persons []localdb.SyncedPerson
-	h.db.Where("ct_id IN ? AND is_child = ?", childIDs, true).
-		Order("last_name, first_name").
-		Find(&persons)
+	childCTIDs := make([]int, 0, len(persons))
+	for _, p := range persons {
+		childCTIDs = append(childCTIDs, p.CTID)
+	}
 
-	// Load group memberships for those persons.
+	// Load relationships to determine which children have parents + parent sex.
+	var rels []localdb.SyncedRelationship
+	h.db.Where("child_ct_id IN ?", childCTIDs).Find(&rels)
+
+	childToParentCTIDs := map[int][]int{}
+	parentCTIDSet := map[int]struct{}{}
+	for _, rel := range rels {
+		childToParentCTIDs[rel.ChildCTID] = append(childToParentCTIDs[rel.ChildCTID], rel.ParentCTID)
+		parentCTIDSet[rel.ParentCTID] = struct{}{}
+	}
+
+	parentCTIDs := make([]int, 0, len(parentCTIDSet))
+	for id := range parentCTIDSet {
+		parentCTIDs = append(parentCTIDs, id)
+	}
+
+	parentSexMap := map[int]string{}
+	if len(parentCTIDs) > 0 {
+		var parents []localdb.SyncedPerson
+		h.db.Select("ct_id, sex").Where("ct_id IN ?", parentCTIDs).Find(&parents)
+		for _, p := range parents {
+			parentSexMap[p.CTID] = p.Sex
+		}
+	}
+
 	var memberships []localdb.SyncedGroupMembership
-	h.db.Where("person_ct_id IN ?", childIDs).Find(&memberships)
-
+	h.db.Where("person_ct_id IN ?", childCTIDs).Find(&memberships)
 	membershipMap := map[int]localdb.SyncedGroupMembership{}
 	for _, m := range memberships {
-		// Keep first membership per person (stable order).
 		if _, exists := membershipMap[m.PersonCTID]; !exists {
 			membershipMap[m.PersonCTID] = m
 		}
 	}
 
-	// Load all relationships and resolve parent sex.
-	var rels []localdb.SyncedRelationship
-	h.db.Where("child_ct_id IN ?", childIDs).Find(&rels)
-
-	parentIDSet := map[int]struct{}{}
-	for _, r := range rels {
-		parentIDSet[r.ParentCTID] = struct{}{}
-	}
-	parentIDSlice := make([]int, 0, len(parentIDSet))
-	for id := range parentIDSet {
-		parentIDSlice = append(parentIDSlice, id)
-	}
-
-	parentSexMap := map[int]string{} // parentCTID → "male"/"female"/""
-	if len(parentIDSlice) > 0 {
-		var parentPersons []localdb.SyncedPerson
-		h.db.Select("ct_id, sex").Where("ct_id IN ?", parentIDSlice).Find(&parentPersons)
-		for _, p := range parentPersons {
-			parentSexMap[p.CTID] = p.Sex
-		}
-	}
-
-	type sexFlags struct{ hasFather, hasMother bool }
-	childFlags := map[int]sexFlags{}
-	for _, rel := range rels {
-		sex := parentSexMap[rel.ParentCTID]
-		f := childFlags[rel.ChildCTID]
-		if sex == "male" {
-			f.hasFather = true
-		} else if sex == "female" {
-			f.hasMother = true
-		}
-		childFlags[rel.ChildCTID] = f
-	}
-
 	result := make([]row, 0, len(persons))
 	for _, p := range persons {
+		pCTIDs, hasParent := childToParentCTIDs[p.CTID]
+		if !hasParent {
+			continue
+		}
+		hasFather, hasMother := false, false
+		for _, pCTID := range pCTIDs {
+			switch parentSexMap[pCTID] {
+			case "male":
+				hasFather = true
+			case "female":
+				hasMother = true
+			}
+		}
 		m := membershipMap[p.CTID]
-		f := childFlags[p.CTID]
 		result = append(result, row{
-			CTID:      p.CTID,
+			ID:        p.ID,
 			FirstName: p.FirstName,
 			LastName:  p.LastName,
 			Birthdate: p.Birthdate,
 			GroupID:   m.GroupID,
 			GroupName: m.GroupName,
-			HasFather: f.hasFather,
-			HasMother: f.hasMother,
+			HasFather: hasFather,
+			HasMother: hasMother,
 		})
 	}
 	writeJSON(w, http.StatusOK, result)
 }
 
-func (h *Handler) GetParentDetail(w http.ResponseWriter, r *http.Request) {
-	childID, err := strconv.Atoi(chi.URLParam(r, "id"))
-	if err != nil {
-		http.Error(w, "invalid id", http.StatusBadRequest)
-		return
-	}
-	parentIDs, err := h.ct.GetParentsForChild(childID)
-	if err != nil {
-		slog.Warn("GetParentDetail: could not get parents", "childId", childID, "err", err)
-		http.Error(w, err.Error(), http.StatusBadGateway)
-		return
-	}
-	if len(parentIDs) == 0 {
-		slog.Warn("GetParentDetail: no parents found, using id as parent", "id", childID)
-		parentIDs = []int{childID}
-	}
-	parentID := parentIDs[0]
-	parent, err := h.ct.GetPerson(parentID)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadGateway)
-		return
-	}
-	children, err := h.ct.GetChildrenForParent(parentID)
-	if err != nil {
-		slog.Warn("GetParentDetail: could not get children", "parentId", parentID, "err", err)
-		children = nil
-	}
-	// Override group info from the local sync DB (CT client returns hardcoded group).
-	for i := range children {
-		var m localdb.SyncedGroupMembership
-		if err := h.db.Where("person_ct_id = ?", children[i].ID).Limit(1).Find(&m).Error; err == nil && m.GroupID != 0 {
-			children[i].GroupID = m.GroupID
-			children[i].GroupName = m.GroupName
-		}
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"parent": parent, "children": children})
-}
-
-// GetParentDetailByParentID returns parent + children from the local DB, keyed by parent CT ID.
-func (h *Handler) GetParentDetailByParentID(w http.ResponseWriter, r *http.Request) {
-	parentID, err := strconv.Atoi(chi.URLParam(r, "id"))
-	if err != nil {
-		http.Error(w, "invalid id", http.StatusBadRequest)
-		return
-	}
-
-	var parent localdb.SyncedPerson
-	h.db.Where("ct_id = ? AND is_parent = ?", parentID, true).Limit(1).Find(&parent)
-	if parent.ID == 0 {
-		http.Error(w, "not found", http.StatusNotFound)
-		return
-	}
-
-	// Load child IDs for this parent.
-	var rels []localdb.SyncedRelationship
-	h.db.Where("parent_ct_id = ?", parentID).Find(&rels)
-
+// writeParentDetail is a shared helper that loads children for a parent
+// (via SyncedRelationship) and writes the full parent+children JSON response.
+func (h *Handler) writeParentDetail(w http.ResponseWriter, parent *localdb.SyncedPerson) {
 	type childRow struct {
-		ID        int    `json:"id"`
+		ID        uint   `json:"id"` // local gorm_id
 		FirstName string `json:"firstName"`
 		LastName  string `json:"lastName"`
 		Birthdate string `json:"birthdate,omitempty"`
 		GroupID   int    `json:"groupId"`
 		GroupName string `json:"groupName"`
 	}
+	type parentRow struct {
+		ID          uint   `json:"id"` // local gorm_id
+		FirstName   string `json:"firstName"`
+		LastName    string `json:"lastName"`
+		Email       string `json:"email"`
+		PhoneNumber string `json:"phoneNumber"`
+		Mobile      string `json:"mobile"`
+		Sex         string `json:"sex"`
+		IsGuest     bool   `json:"isGuest"`
+	}
 
-	var children []childRow
+	var rels []localdb.SyncedRelationship
+	h.db.Where("parent_ct_id = ?", parent.CTID).Find(&rels)
+
+	children := make([]childRow, 0, len(rels))
 	for _, rel := range rels {
 		var child localdb.SyncedPerson
-		h.db.Where("ct_id = ? AND is_child = ?", rel.ChildCTID, true).Limit(1).Find(&child)
-		if child.ID == 0 {
+		if h.db.Where("ct_id = ? AND is_child = ?", rel.ChildCTID, true).Limit(1).Find(&child).Error != nil || child.ID == 0 {
 			continue
 		}
 		var m localdb.SyncedGroupMembership
 		h.db.Where("person_ct_id = ?", rel.ChildCTID).Limit(1).Find(&m)
 		children = append(children, childRow{
-			ID:        child.CTID,
+			ID:        child.ID,
 			FirstName: child.FirstName,
 			LastName:  child.LastName,
 			Birthdate: child.Birthdate,
@@ -339,44 +289,83 @@ func (h *Handler) GetParentDetailByParentID(w http.ResponseWriter, r *http.Reque
 			GroupName: m.GroupName,
 		})
 	}
-	if children == nil {
-		children = []childRow{}
-	}
 
-	type parentRow struct {
-		ID          int    `json:"id"`
-		FirstName   string `json:"firstName"`
-		LastName    string `json:"lastName"`
-		Email       string `json:"email"`
-		PhoneNumber string `json:"phoneNumber"`
-		Mobile      string `json:"mobile"`
-	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"parent": parentRow{
-			ID:          parent.CTID,
+			ID:          parent.ID,
 			FirstName:   parent.FirstName,
 			LastName:    parent.LastName,
 			Email:       parent.Email,
 			PhoneNumber: parent.PhoneNumber,
 			Mobile:      parent.Mobile,
+			Sex:         parent.Sex,
+			IsGuest:     parent.IsGuest,
 		},
 		"children": children,
 	})
 }
 
-// GetChildParents returns all parents linked to a child (by child CT ID) from the local DB.
+// GetParentDetail returns parent+children detail, navigated by child gorm_id.
+func (h *Handler) GetParentDetail(w http.ResponseWriter, r *http.Request) {
+	childID, err := strconv.Atoi(chi.URLParam(r, "id"))
+	if err != nil {
+		http.Error(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+	var child localdb.SyncedPerson
+	if err := h.db.First(&child, childID).Error; err != nil {
+		http.Error(w, "child not found", http.StatusNotFound)
+		return
+	}
+
+	var rel localdb.SyncedRelationship
+	h.db.Where("child_ct_id = ?", child.CTID).Limit(1).Find(&rel)
+	if rel.ParentCTID == 0 {
+		http.Error(w, "no parent found", http.StatusNotFound)
+		return
+	}
+
+	var parent localdb.SyncedPerson
+	if h.db.Where("ct_id = ? AND is_parent = ?", rel.ParentCTID, true).Limit(1).Find(&parent).Error != nil || parent.ID == 0 {
+		http.Error(w, "parent not found", http.StatusNotFound)
+		return
+	}
+	h.writeParentDetail(w, &parent)
+}
+
+// GetParentDetailByParentID returns parent+children detail, navigated by parent gorm_id.
+func (h *Handler) GetParentDetailByParentID(w http.ResponseWriter, r *http.Request) {
+	parentID, err := strconv.Atoi(chi.URLParam(r, "id"))
+	if err != nil {
+		http.Error(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+	var parent localdb.SyncedPerson
+	if err := h.db.First(&parent, parentID).Error; err != nil {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	h.writeParentDetail(w, &parent)
+}
+
+// GetChildParents returns all parents linked to a child (by child gorm_id) from the local DB.
 func (h *Handler) GetChildParents(w http.ResponseWriter, r *http.Request) {
 	childID, err := strconv.Atoi(chi.URLParam(r, "id"))
 	if err != nil {
 		http.Error(w, "invalid id", http.StatusBadRequest)
 		return
 	}
+	var child localdb.SyncedPerson
+	if err := h.db.First(&child, childID).Error; err != nil {
+		http.Error(w, "child not found", http.StatusNotFound)
+		return
+	}
 
 	var rels []localdb.SyncedRelationship
-	h.db.Where("child_ct_id = ?", childID).Find(&rels)
+	h.db.Where("child_ct_id = ?", child.CTID).Find(&rels)
 
 	type parentRow struct {
-		ID          int    `json:"id"`
+		ID          uint   `json:"id"` // local gorm_id
 		FirstName   string `json:"firstName"`
 		LastName    string `json:"lastName"`
 		Email       string `json:"email"`
@@ -387,12 +376,11 @@ func (h *Handler) GetChildParents(w http.ResponseWriter, r *http.Request) {
 	parents := make([]parentRow, 0, len(rels))
 	for _, rel := range rels {
 		var p localdb.SyncedPerson
-		h.db.Where("ct_id = ? AND is_parent = ?", rel.ParentCTID, true).Limit(1).Find(&p)
-		if p.ID == 0 {
+		if h.db.Where("ct_id = ? AND is_parent = ?", rel.ParentCTID, true).Limit(1).Find(&p).Error != nil || p.ID == 0 {
 			continue
 		}
 		parents = append(parents, parentRow{
-			ID:          p.CTID,
+			ID:          p.ID,
 			FirstName:   p.FirstName,
 			LastName:    p.LastName,
 			Email:       p.Email,
@@ -403,17 +391,20 @@ func (h *Handler) GetChildParents(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, parents)
 }
 
+// GenerateQR generates a QR code PNG for the parent identified by parent gorm_id.
+// POST /api/admin/parents/{id}/qr
 func (h *Handler) GenerateQR(w http.ResponseWriter, r *http.Request) {
-	childID, err := strconv.Atoi(chi.URLParam(r, "id"))
+	parentID, err := strconv.Atoi(chi.URLParam(r, "id"))
 	if err != nil {
 		http.Error(w, "invalid id", http.StatusBadRequest)
 		return
 	}
-	parentID := childID
-	if parentIDs, err := h.ct.GetParentsForChild(childID); err == nil && len(parentIDs) > 0 {
-		parentID = parentIDs[0]
+	var parent localdb.SyncedPerson
+	if err := h.db.First(&parent, parentID).Error; err != nil {
+		http.Error(w, "parent not found", http.StatusNotFound)
+		return
 	}
-	token, err := auth.NewParentToken(h.jwtSecret, parentID)
+	token, err := auth.NewParentToken(h.jwtSecret, int(parent.ID))
 	if err != nil {
 		http.Error(w, "could not create token", http.StatusInternalServerError)
 		return
@@ -449,6 +440,7 @@ func (h *Handler) ListGroups(w http.ResponseWriter, r *http.Request) {
 
 // ListParents returns synced parent records from the local DB.
 // Each parent includes a deduplicated list of groups their children belong to.
+// Returns local gorm_id as "id"; includes isGuest flag.
 // Optional query param: ?sex=male  ?sex=female  (omit for all)
 func (h *Handler) ListParents(w http.ResponseWriter, r *http.Request) {
 	type groupEntry struct {
@@ -456,13 +448,14 @@ func (h *Handler) ListParents(w http.ResponseWriter, r *http.Request) {
 		Name string `json:"name"`
 	}
 	type row struct {
-		CTID        int          `json:"id"`
+		ID          uint         `json:"id"` // local gorm_id
 		FirstName   string       `json:"firstName"`
 		LastName    string       `json:"lastName"`
 		Sex         string       `json:"sex"`
 		Email       string       `json:"email"`
 		PhoneNumber string       `json:"phoneNumber"`
 		Mobile      string       `json:"mobile"`
+		IsGuest     bool         `json:"isGuest"`
 		Groups      []groupEntry `json:"groups"`
 	}
 
@@ -479,15 +472,15 @@ func (h *Handler) ListParents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Collect all parent CT IDs.
-	parentIDs := make([]int, len(persons))
+	// Collect all parent CTIDs for relationship lookups.
+	parentCTIDs := make([]int, len(persons))
 	for i, p := range persons {
-		parentIDs[i] = p.CTID
+		parentCTIDs[i] = p.CTID
 	}
 
-	// Load relationships: parent → children.
+	// Load relationships: parent CTID → children CTIDs.
 	var rels []localdb.SyncedRelationship
-	h.db.Where("parent_ct_id IN ?", parentIDs).Find(&rels)
+	h.db.Where("parent_ct_id IN ?", parentCTIDs).Find(&rels)
 
 	childIDSet := map[int]struct{}{}
 	parentToChildren := map[int][]int{} // parentCTID → []childCTID
@@ -496,13 +489,11 @@ func (h *Handler) ListParents(w http.ResponseWriter, r *http.Request) {
 		childIDSet[rel.ChildCTID] = struct{}{}
 	}
 
-	// Load group memberships for all those children.
 	childIDs := make([]int, 0, len(childIDSet))
 	for id := range childIDSet {
 		childIDs = append(childIDs, id)
 	}
 
-	// childGroupMap: childCTID → []SyncedGroupMembership
 	childGroupMap := map[int][]localdb.SyncedGroupMembership{}
 	if len(childIDs) > 0 {
 		var memberships []localdb.SyncedGroupMembership
@@ -514,11 +505,10 @@ func (h *Handler) ListParents(w http.ResponseWriter, r *http.Request) {
 
 	result := make([]row, 0, len(persons))
 	for _, p := range persons {
-		// Collect unique groups across all children of this parent.
 		seen := map[int]struct{}{}
 		var groups []groupEntry
-		for _, childID := range parentToChildren[p.CTID] {
-			for _, m := range childGroupMap[childID] {
+		for _, childCTID := range parentToChildren[p.CTID] {
+			for _, m := range childGroupMap[childCTID] {
 				if _, exists := seen[m.GroupID]; !exists {
 					seen[m.GroupID] = struct{}{}
 					groups = append(groups, groupEntry{ID: m.GroupID, Name: m.GroupName})
@@ -529,19 +519,19 @@ func (h *Handler) ListParents(w http.ResponseWriter, r *http.Request) {
 			groups = []groupEntry{}
 		}
 		result = append(result, row{
-			CTID:        p.CTID,
+			ID:          p.ID,
 			FirstName:   p.FirstName,
 			LastName:    p.LastName,
 			Sex:         p.Sex,
 			Email:       p.Email,
 			PhoneNumber: p.PhoneNumber,
 			Mobile:      p.Mobile,
+			IsGuest:     p.IsGuest,
 			Groups:      groups,
 		})
 	}
 	writeJSON(w, http.StatusOK, result)
 }
-
 // ── Admin: check-in management ────────────────────────────────────────────
 
 // ListCheckins returns today's check-in records.
@@ -638,21 +628,19 @@ func (h *Handler) CheckInAtGroup(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	// Best-effort sync to ChurchTools.
-	if err := h.ct.CheckIn(record.ChildID, record.GroupID); err != nil {
-		slog.Warn("CheckInAtGroup: CT sync failed", "childId", record.ChildID, "err", err)
+	// Best-effort sync to ChurchTools (skipped for guest children).
+	if !record.IsGuest {
+		var child localdb.SyncedPerson
+		if err := h.db.First(&child, record.ChildID).Error; err == nil {
+			if ctErr := h.ct.CheckIn(child.CTID, record.GroupID); ctErr != nil {
+				slog.Warn("CheckInAtGroup: CT sync failed", "childId", record.ChildID, "err", ctErr)
+			}
+		}
 	}
 	writeJSON(w, http.StatusOK, record)
 }
 
 // ── Parent-facing endpoints ───────────────────────────────────────────────
-
-type childWithStatus struct {
-	ct.Child
-	// Status is "" (not registered today), "pending", "registered", or "checked_in".
-	Status         string     `json:"status"`
-	LastNotifiedAt *time.Time `json:"lastNotifiedAt"`
-}
 
 // GetParentQR returns a QR code PNG for the parent's own check-in URL.
 // Security: the token is validated; only that parent's URL is encoded.
@@ -676,6 +664,7 @@ func (h *Handler) GetParentQR(w http.ResponseWriter, r *http.Request) {
 }
 
 // GetParentCheckinPage returns the parent and their children with today's local status.
+// Uses the local DB for both CT-synced and guest families (no CT API dependency).
 func (h *Handler) GetParentCheckinPage(w http.ResponseWriter, r *http.Request) {
 	tokenStr := chi.URLParam(r, "token")
 	claims, err := auth.ParseToken(h.jwtSecret, tokenStr)
@@ -683,43 +672,79 @@ func (h *Handler) GetParentCheckinPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid or expired token", http.StatusUnauthorized)
 		return
 	}
-	parent, err := h.ct.GetPerson(claims.ParentID)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadGateway)
-		return
-	}
-	children, err := h.ct.GetChildrenForParent(claims.ParentID)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadGateway)
+
+	var parent localdb.SyncedPerson
+	if err := h.db.First(&parent, claims.ParentID).Error; err != nil {
+		http.Error(w, "parent not found", http.StatusNotFound)
 		return
 	}
 
-	// Overwrite group info from local DB (CT client returns hardcoded group).
-	for i := range children {
-		var m localdb.SyncedGroupMembership
-		if err := h.db.Where("person_ct_id = ?", children[i].ID).Limit(1).Find(&m).Error; err == nil && m.GroupID != 0 {
-			children[i].GroupID = m.GroupID
-			children[i].GroupName = m.GroupName
+	var rels []localdb.SyncedRelationship
+	h.db.Where("parent_ct_id = ?", parent.CTID).Find(&rels)
+
+	type childItem struct {
+		ID             uint       `json:"id"` // child gorm_id
+		FirstName      string     `json:"firstName"`
+		LastName       string     `json:"lastName"`
+		Birthdate      string     `json:"birthdate"`
+		GroupID        int        `json:"groupId"`
+		GroupName      string     `json:"groupName"`
+		Status         string     `json:"status"`
+		LastNotifiedAt *time.Time `json:"lastNotifiedAt"`
+	}
+	type parentItem struct {
+		ID          uint   `json:"id"`
+		FirstName   string `json:"firstName"`
+		LastName    string `json:"lastName"`
+		Email       string `json:"email"`
+		PhoneNumber string `json:"phoneNumber"`
+		Mobile      string `json:"mobile"`
+	}
+
+	today := localdb.Today()
+	children := make([]childItem, 0, len(rels))
+	for _, rel := range rels {
+		var child localdb.SyncedPerson
+		if h.db.Where("ct_id = ? AND is_child = ?", rel.ChildCTID, true).Limit(1).Find(&child).Error != nil || child.ID == 0 {
+			continue
 		}
-	}
+		var m localdb.SyncedGroupMembership
+		h.db.Where("person_ct_id = ?", rel.ChildCTID).Limit(1).Find(&m)
 
-	var withStatus []childWithStatus
-	for _, child := range children {
 		var record localdb.CheckIn
 		status := ""
 		var lastNotifiedAt *time.Time
-		if err := h.db.Where("event_date = ? AND child_id = ?", localdb.Today(), child.ID).
-			First(&record).Error; err == nil {
+		if h.db.Where("event_date = ? AND child_id = ?", today, child.ID).First(&record).Error == nil {
 			status = record.Status
 			lastNotifiedAt = record.LastNotifiedAt
 		}
-		withStatus = append(withStatus, childWithStatus{Child: child, Status: status, LastNotifiedAt: lastNotifiedAt})
+		children = append(children, childItem{
+			ID:             child.ID,
+			FirstName:      child.FirstName,
+			LastName:       child.LastName,
+			Birthdate:      child.Birthdate,
+			GroupID:        m.GroupID,
+			GroupName:      m.GroupName,
+			Status:         status,
+			LastNotifiedAt: lastNotifiedAt,
+		})
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"parent": parent, "children": withStatus})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"parent": parentItem{
+			ID:          parent.ID,
+			FirstName:   parent.FirstName,
+			LastName:    parent.LastName,
+			Email:       parent.Email,
+			PhoneNumber: parent.PhoneNumber,
+			Mobile:      parent.Mobile,
+		},
+		"children": children,
+	})
 }
 
 // RegisterChild creates (or resets to pending) a check-in record.
 // Step 1 of the 2-step flow: parent taps "Anmelden" at the entrance.
+// childId in the URL is the child's local gorm_id.
 func (h *Handler) RegisterChild(w http.ResponseWriter, r *http.Request) {
 	tokenStr := chi.URLParam(r, "token")
 	claims, err := auth.ParseToken(h.jwtSecret, tokenStr)
@@ -733,45 +758,47 @@ func (h *Handler) RegisterChild(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify the child belongs to this parent.
-	children, err := h.ct.GetChildrenForParent(claims.ParentID)
-	if err != nil {
-		http.Error(w, "could not verify child", http.StatusBadGateway)
+	// Load parent from local DB by gorm_id (stored in JWT).
+	var parent localdb.SyncedPerson
+	if err := h.db.First(&parent, claims.ParentID).Error; err != nil {
+		http.Error(w, "parent not found", http.StatusUnauthorized)
 		return
 	}
-	var child *ct.Child
-	for i := range children {
-		if children[i].ID == childID {
-			child = &children[i]
-			break
-		}
+
+	// Load child from local DB by gorm_id.
+	var child localdb.SyncedPerson
+	if err := h.db.First(&child, childID).Error; err != nil {
+		http.Error(w, "child not found", http.StatusNotFound)
+		return
 	}
-	if child == nil {
+
+	// Verify the child belongs to this parent via SyncedRelationship.
+	var rel localdb.SyncedRelationship
+	h.db.Where("parent_ct_id = ? AND child_ct_id = ?", parent.CTID, child.CTID).Limit(1).Find(&rel)
+	if rel.ParentCTID == 0 {
 		http.Error(w, "child not found for this parent", http.StatusForbidden)
 		return
 	}
 
+	// Get group from local DB.
+	var membership localdb.SyncedGroupMembership
+	h.db.Where("person_ct_id = ?", child.CTID).Limit(1).Find(&membership)
+
 	today := localdb.Today()
 	var record localdb.CheckIn
-	// Find existing record for today or create a new one (include soft-deleted rows).
-	h.db.Unscoped().Where("event_date = ? AND child_id = ?", today, childID).First(&record)
-	record.DeletedAt = gorm.DeletedAt{} // restore if soft-deleted
+	h.db.Unscoped().Where("event_date = ? AND child_id = ?", today, child.ID).First(&record)
+	record.DeletedAt = gorm.DeletedAt{}
 
 	record.EventDate = today
-	record.ChildID = childID
+	record.ChildID = int(child.ID)
 	record.FirstName = child.FirstName
 	record.LastName = child.LastName
 	record.Birthdate = child.Birthdate
-	record.GroupID = child.GroupID
-	record.GroupName = child.GroupName
-	// Override with the more accurate group info from the local sync DB.
-	var membership localdb.SyncedGroupMembership
-	if h.db.Where("person_ct_id = ?", childID).Limit(1).Find(&membership).Error == nil && membership.GroupID != 0 {
-		record.GroupID = membership.GroupID
-		record.GroupName = membership.GroupName
-	}
+	record.GroupID = membership.GroupID
+	record.GroupName = membership.GroupName
 	record.ParentID = claims.ParentID
 	record.Status = localdb.StatusPending
+	record.IsGuest = child.IsGuest
 
 	if err := h.db.Save(&record).Error; err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -843,6 +870,237 @@ func (h *Handler) SetCheckInStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, record)
 }
 
+// ── Guest management ──────────────────────────────────────────────────────
+
+// guestCTIDOffset is added to a guest's local gorm_id to produce a synthetic CTID
+// that is guaranteed to never collide with real ChurchTools IDs (which are <1B).
+const guestCTIDOffset = 1_000_000_000
+
+type guestRequest struct {
+	Parent struct {
+		FirstName string `json:"firstName"`
+		LastName  string `json:"lastName"`
+		Sex       string `json:"sex"`
+		Mobile    string `json:"mobile"`
+	} `json:"parent"`
+	Children []struct {
+		FirstName string `json:"firstName"`
+		LastName  string `json:"lastName"`
+		Birthdate string `json:"birthdate"`
+		GroupID   int    `json:"groupId"`
+		GroupName string `json:"groupName"`
+	} `json:"children"`
+}
+
+// CreateGuest creates a new guest family (parent + children) in the local DB.
+// POST /api/admin/guests
+func (h *Handler) CreateGuest(w http.ResponseWriter, r *http.Request) {
+	var req guestRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	if req.Parent.FirstName == "" || req.Parent.LastName == "" {
+		http.Error(w, "parent name required", http.StatusBadRequest)
+		return
+	}
+
+	// Create parent (step 1: CTID=0, step 2: update with guestCTIDOffset + ID).
+	parent := localdb.SyncedPerson{
+		FirstName: req.Parent.FirstName,
+		LastName:  req.Parent.LastName,
+		Sex:       req.Parent.Sex,
+		Mobile:    req.Parent.Mobile,
+		IsParent:  true,
+		IsGuest:   true,
+	}
+	if err := h.db.Create(&parent).Error; err != nil {
+		http.Error(w, "db error: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	parent.CTID = guestCTIDOffset + int(parent.ID)
+	if err := h.db.Save(&parent).Error; err != nil {
+		http.Error(w, "db error: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Create each child and link to parent.
+	for _, c := range req.Children {
+		child := localdb.SyncedPerson{
+			FirstName: c.FirstName,
+			LastName:  c.LastName,
+			Birthdate: c.Birthdate,
+			IsChild:   true,
+			IsGuest:   true,
+		}
+		if err := h.db.Create(&child).Error; err != nil {
+			http.Error(w, "db error: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		child.CTID = guestCTIDOffset + int(child.ID)
+		if err := h.db.Save(&child).Error; err != nil {
+			http.Error(w, "db error: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if c.GroupID != 0 {
+			h.db.Create(&localdb.SyncedGroupMembership{
+				PersonCTID: child.CTID,
+				GroupID:    c.GroupID,
+				GroupName:  c.GroupName,
+			})
+		}
+		h.db.Create(&localdb.SyncedRelationship{
+			ParentCTID: parent.CTID,
+			ChildCTID:  child.CTID,
+		})
+	}
+
+	writeJSON(w, http.StatusCreated, map[string]any{"id": parent.ID})
+}
+
+// UpdateGuest updates an existing guest family.
+// PUT /api/admin/guests/{id}
+func (h *Handler) UpdateGuest(w http.ResponseWriter, r *http.Request) {
+	parentID, err := strconv.Atoi(chi.URLParam(r, "id"))
+	if err != nil {
+		http.Error(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+	var req guestRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+
+	var parent localdb.SyncedPerson
+	if err := h.db.First(&parent, parentID).Error; err != nil || !parent.IsGuest {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+
+	parent.FirstName = req.Parent.FirstName
+	parent.LastName = req.Parent.LastName
+	parent.Sex = req.Parent.Sex
+	parent.Mobile = req.Parent.Mobile
+	if err := h.db.Save(&parent).Error; err != nil {
+		http.Error(w, "db error: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Load existing children ordered by ChildCTID (= creation order).
+	var rels []localdb.SyncedRelationship
+	h.db.Where("parent_ct_id = ?", parent.CTID).Find(&rels)
+	sort.Slice(rels, func(i, j int) bool { return rels[i].ChildCTID < rels[j].ChildCTID })
+
+	// Update existing children in-place (preserving CheckIn status) or create new ones.
+	for i, c := range req.Children {
+		if i < len(rels) {
+			// Update the existing child in-place so any active CheckIn record is preserved.
+			var child localdb.SyncedPerson
+			h.db.Unscoped().Where("ct_id = ?", rels[i].ChildCTID).Limit(1).Find(&child)
+			if child.ID == 0 {
+				http.Error(w, "db error: child not found", http.StatusInternalServerError)
+				return
+			}
+			child.FirstName = c.FirstName
+			child.LastName = c.LastName
+			child.Birthdate = c.Birthdate
+			if err := h.db.Save(&child).Error; err != nil {
+				http.Error(w, "db error: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
+			// Update group membership.
+			h.db.Where("person_ct_id = ?", child.CTID).Delete(&localdb.SyncedGroupMembership{})
+			if c.GroupID != 0 {
+				h.db.Create(&localdb.SyncedGroupMembership{
+					PersonCTID: child.CTID,
+					GroupID:    c.GroupID,
+					GroupName:  c.GroupName,
+				})
+			}
+			// Sync cached name/group fields into today's CheckIn record if present.
+			h.db.Model(&localdb.CheckIn{}).
+				Where("child_id = ? AND event_date = ?", child.ID, localdb.Today()).
+				Updates(map[string]any{
+					"first_name": c.FirstName,
+					"last_name":  c.LastName,
+					"birthdate":  c.Birthdate,
+					"group_id":   c.GroupID,
+					"group_name": c.GroupName,
+				})
+		} else {
+			// Create a new child.
+			child := localdb.SyncedPerson{
+				FirstName: c.FirstName,
+				LastName:  c.LastName,
+				Birthdate: c.Birthdate,
+				IsChild:   true,
+				IsGuest:   true,
+			}
+			if err := h.db.Create(&child).Error; err != nil {
+				http.Error(w, "db error: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
+			child.CTID = guestCTIDOffset + int(child.ID)
+			if err := h.db.Save(&child).Error; err != nil {
+				http.Error(w, "db error: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
+			if c.GroupID != 0 {
+				h.db.Create(&localdb.SyncedGroupMembership{
+					PersonCTID: child.CTID,
+					GroupID:    c.GroupID,
+					GroupName:  c.GroupName,
+				})
+			}
+			h.db.Create(&localdb.SyncedRelationship{
+				ParentCTID: parent.CTID,
+				ChildCTID:  child.CTID,
+			})
+		}
+	}
+
+	// Delete excess old children (when the new list is shorter).
+	for i := len(req.Children); i < len(rels); i++ {
+		var oldChild localdb.SyncedPerson
+		h.db.Unscoped().Where("ct_id = ?", rels[i].ChildCTID).Limit(1).Find(&oldChild)
+		if oldChild.ID != 0 {
+			h.db.Where("child_id = ?", oldChild.ID).Delete(&localdb.CheckIn{})
+		}
+		h.db.Where("person_ct_id = ?", rels[i].ChildCTID).Delete(&localdb.SyncedGroupMembership{})
+		h.db.Unscoped().Where("ct_id = ?", rels[i].ChildCTID).Delete(&localdb.SyncedPerson{})
+		h.db.Where("parent_ct_id = ? AND child_ct_id = ?", parent.CTID, rels[i].ChildCTID).Delete(&localdb.SyncedRelationship{})
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// DeleteGuest removes a guest family entirely from the local DB.
+// DELETE /api/admin/guests/{id}
+func (h *Handler) DeleteGuest(w http.ResponseWriter, r *http.Request) {
+	parentID, err := strconv.Atoi(chi.URLParam(r, "id"))
+	if err != nil {
+		http.Error(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+	var parent localdb.SyncedPerson
+	if err := h.db.First(&parent, parentID).Error; err != nil || !parent.IsGuest {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+
+	var rels []localdb.SyncedRelationship
+	h.db.Where("parent_ct_id = ?", parent.CTID).Find(&rels)
+	for _, rel := range rels {
+		h.db.Where("person_ct_id = ?", rel.ChildCTID).Delete(&localdb.SyncedGroupMembership{})
+		h.db.Unscoped().Where("ct_id = ?", rel.ChildCTID).Delete(&localdb.SyncedPerson{})
+	}
+	h.db.Where("parent_ct_id = ?", parent.CTID).Delete(&localdb.SyncedRelationship{})
+	h.db.Unscoped().Delete(&parent)
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // ── Reports ───────────────────────────────────────────────────────────────
 
 // reportFilenameRe validates the safe filename pattern YYYY-MM-DD_NNN.csv.
@@ -879,9 +1137,9 @@ func (h *Handler) generateReport(date string, records []localdb.CheckIn) error {
 	parentMap := map[int]localdb.SyncedPerson{}
 	if len(parentIDs) > 0 {
 		var parents []localdb.SyncedPerson
-		h.db.Where("ct_id IN ?", parentIDs).Find(&parents)
+		h.db.Where("id IN ?", parentIDs).Find(&parents)
 		for _, p := range parents {
-			parentMap[p.CTID] = p
+			parentMap[int(p.ID)] = p
 		}
 	}
 

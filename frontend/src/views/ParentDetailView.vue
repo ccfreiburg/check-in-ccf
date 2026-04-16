@@ -18,9 +18,12 @@
       <template v-else-if="detail">
         <!-- Parent card -->
         <div class="bg-white rounded-2xl shadow-sm p-5">
-          <h2 class="text-lg font-bold text-gray-900 mb-3">
-            {{ detail.parent.firstName }} {{ detail.parent.lastName }}
-          </h2>
+          <div class="flex items-start justify-between mb-3">
+            <h2 class="text-lg font-bold text-gray-900">
+              {{ detail.parent.firstName }} {{ detail.parent.lastName }}
+            </h2>
+            <span v-if="detail.parent.isGuest" class="text-xs font-semibold bg-amber-100 text-amber-700 px-3 py-1 rounded-full ml-2">Gast</span>
+          </div>
           <dl class="space-y-1 text-sm text-gray-700">
             <div v-if="detail.parent.email" class="flex gap-2">
               <dt class="font-medium w-20 text-gray-500">{{ t('parent_detail.email') }}</dt>
@@ -35,6 +38,18 @@
               <dd>{{ detail.parent.mobile }}</dd>
             </div>
           </dl>
+          <!-- Guest actions -->
+          <div v-if="detail.parent.isGuest" class="flex gap-2 mt-4">
+            <button
+              @click="router.push({ name: 'guest-edit', params: { id: detail!.parent.id } })"
+              class="flex-1 bg-white border border-gray-300 text-gray-700 font-medium py-2 rounded-xl text-sm hover:bg-gray-50 transition"
+            >{{ t('parent_detail.guest_edit') }}</button>
+            <button
+              @click="handleDeleteGuest"
+              :disabled="deleting"
+              class="px-4 py-2 rounded-xl text-sm font-medium bg-white border border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-50 transition"
+            >{{ deleting ? t('common.please_wait') : t('parent_detail.guest_delete') }}</button>
+          </div>
         </div>
 
         <!-- Children -->
@@ -93,7 +108,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
-import { getParentDetail, getParentDetailByParentId, generateQR as apiGenerateQR } from '../api'
+import { getParentDetail, getParentDetailByParentId, generateQR as apiGenerateQR, deleteGuest } from '../api'
 import type { ParentDetail } from '../api/types'
 
 const route = useRoute()
@@ -106,11 +121,10 @@ const byParent = route.name === 'parent-by-parent'
 const detail = ref<ParentDetail | null>(null)
 const loading = ref(true)
 const error = ref('')
+const deleting = ref(false)
 
-// QR is generated using a child ID; when navigating by parent, use first child.
-const qrChildId = computed(() =>
-  byParent ? (detail.value?.children[0]?.id ?? null) : routeId,
-)
+// QR is generated for the parent gorm_id.
+const qrParentId = computed(() => detail.value?.parent?.id ?? null)
 
 const qrBlob = ref<Blob | null>(null)
 const qrBlobUrl = computed(() =>
@@ -135,11 +149,11 @@ onMounted(async () => {
 })
 
 async function generateQR() {
-  if (qrChildId.value == null) return
+  if (qrParentId.value == null) return
   qrError.value = ''
   qrLoading.value = true
   try {
-    const result = await apiGenerateQR(qrChildId.value)
+    const result = await apiGenerateQR(qrParentId.value)
     qrBlob.value = result.blob
     qrCheckinUrl.value = result.url
   } catch (e) {
@@ -160,5 +174,19 @@ function download() {
 function reset() {
   qrBlob.value = null
   qrCheckinUrl.value = ''
+}
+
+async function handleDeleteGuest() {
+  if (!detail.value?.parent?.id) return
+  if (!confirm(t('parent_detail.guest_delete_confirm'))) return
+  deleting.value = true
+  try {
+    await deleteGuest(detail.value.parent.id)
+    router.replace({ name: 'first-registration' })
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : t('common.error')
+  } finally {
+    deleting.value = false
+  }
 }
 </script>

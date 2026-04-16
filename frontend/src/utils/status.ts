@@ -14,6 +14,7 @@ export interface ChildCardItem {
   tagReceived?: boolean
   checkedInAt?: string | null
   lastNotifiedAt?: string | null
+  isGuest?: boolean
 }
 
 export function useStatusHelpers() {

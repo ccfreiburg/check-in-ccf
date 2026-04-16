@@ -8,6 +8,8 @@ export interface Person {
   email: string
   phoneNumber: string
   mobile?: string
+  sex?: string
+  isGuest?: boolean
 }
 
 export interface Child {
@@ -29,6 +31,7 @@ export interface Parent {
   email: string
   phoneNumber: string
   mobile?: string
+  isGuest?: boolean
   groups: { id: number; name: string }[]
 }
 
@@ -67,6 +70,7 @@ export interface CheckInRecord {
   CheckedInAt: string | null
   CheckedOutAt: string | null
   LastNotifiedAt: string | null
+  IsGuest: boolean
   CreatedAt: string
 }
 
@@ -76,3 +80,25 @@ export interface EventReport {
   date: string
   size: number
 }
+
+export interface GuestChildInput {
+  firstName: string
+  lastName: string
+  birthdate: string
+  groupId: number
+  groupName: string
+}
+
+export interface GuestParentInput {
+  firstName: string
+  lastName: string
+  sex: string
+  mobile: string
+}
+
+export interface CreateGuestRequest {
+  parent: GuestParentInput
+  children: GuestChildInput[]
+}
+
+export type UpdateGuestRequest = CreateGuestRequest

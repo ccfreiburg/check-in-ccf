@@ -98,7 +98,7 @@ func main() {
 	r.Use(middleware.Recoverer)
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   []string{frontendBase},
-		AllowedMethods:   []string{"GET", "POST", "PUT", "OPTIONS"},
+		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type"},
 		AllowCredentials: true,
 	}))
@@ -109,7 +109,10 @@ func main() {
 		r.Get("/api/admin/children", h.ListChildren)
 		r.Get("/api/admin/children/{id}/parent", h.GetParentDetail)
 		r.Get("/api/admin/children/{id}/parents", h.GetChildParents)
-		r.Post("/api/admin/children/{id}/qr", h.GenerateQR)
+		r.Post("/api/admin/parents/{id}/qr", h.GenerateQR)
+		r.Post("/api/admin/guests", h.CreateGuest)
+		r.Put("/api/admin/guests/{id}", h.UpdateGuest)
+		r.Delete("/api/admin/guests/{id}", h.DeleteGuest)
 		// Check-in management (2-step flow)
 		r.Get("/api/admin/groups", h.ListGroups)
 		r.Get("/api/admin/parents", h.ListParents)
@@ -118,17 +121,12 @@ func main() {
 		r.Post("/api/admin/checkins/end-event", h.EndEvent)
 		r.Post("/api/admin/checkins/{id}/confirm", h.ConfirmTagHandout)
 		r.Post("/api/admin/checkins/{id}/checkin", h.CheckInAtGroup)
+		r.Post("/api/admin/checkins/{id}/set-status", h.SetCheckInStatus)
 		r.Post("/api/admin/checkins/{id}/notify", h.SendParentMessage)
 		r.Delete("/api/admin/checkins/{id}/notify", h.ClearNotify)
 		r.Post("/api/admin/sync", h.SyncCT)
 		r.Get("/api/admin/reports", h.ListReports)
 		r.Get("/api/admin/reports/{filename}", h.GetReport)
-	})
-
-	// Admin-only routes (require admin token)
-	r.Group(func(r chi.Router) {
-		r.Use(auth.AdminMiddleware(jwtSecret))
-		r.Post("/api/admin/checkins/{id}/set-status", h.SetCheckInStatus)
 	})
 
 	// Parent-facing routes (require parent token embedded in URL path)

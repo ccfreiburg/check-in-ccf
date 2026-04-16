@@ -1,4 +1,4 @@
-import type { Child, Parent, Person, CheckInRecord, ParentDetail, ParentCheckinPage, CheckInStatus, EventReport } from './types'
+import type { Child, Parent, Person, CheckInRecord, ParentDetail, ParentCheckinPage, CheckInStatus, EventReport, CreateGuestRequest, UpdateGuestRequest } from './types'
 
 const BASE = '/api'
 
@@ -73,9 +73,9 @@ export async function getChildParents(childId: number): Promise<Person[]> {
   return handleResponse<Person[]>(res)
 }
 
-/** Returns a URL to the QR code PNG image */
+/** Returns a URL to the QR code PNG image (by parent gorm_id) */
 export function qrCodeUrl(parentId: number): string {
-  return `${BASE}/admin/children/${parentId}/qr`
+  return `${BASE}/admin/parents/${parentId}/qr`
 }
 
 export async function generateQR(parentId: number): Promise<{ blob: Blob; url: string }> {
@@ -232,4 +232,32 @@ export async function clearParentNotify(checkinId: number): Promise<CheckInRecor
     headers: authHeaders(),
   })
   return handleResponse<CheckInRecord>(res)
+}
+
+// ── Guest management ──────────────────────────────────────────────────────
+
+export async function createGuest(data: CreateGuestRequest): Promise<{ id: number }> {
+  const res = await fetch(`${BASE}/admin/guests`, {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+  return handleResponse<{ id: number }>(res)
+}
+
+export async function updateGuest(id: number, data: UpdateGuestRequest): Promise<void> {
+  const res = await fetch(`${BASE}/admin/guests/${id}`, {
+    method: 'PUT',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+  if (!res.ok) throw new ApiError(res.status, await res.text())
+}
+
+export async function deleteGuest(id: number): Promise<void> {
+  const res = await fetch(`${BASE}/admin/guests/${id}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  })
+  if (!res.ok) throw new ApiError(res.status, await res.text())
 }

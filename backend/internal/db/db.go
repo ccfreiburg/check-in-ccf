@@ -24,6 +24,8 @@ func Open(path string) (*gorm.DB, error) {
 	database.Exec(`ALTER TABLE check_ins ADD COLUMN registered_at DATETIME`)
 	database.Exec(`ALTER TABLE check_ins ADD COLUMN last_notified_at DATETIME`)
 	database.Exec(`ALTER TABLE check_ins ADD COLUMN checked_out_at DATETIME`)
+	database.Exec(`ALTER TABLE check_ins ADD COLUMN is_guest BOOLEAN NOT NULL DEFAULT false`)
+	database.Exec(`ALTER TABLE synced_persons ADD COLUMN is_guest BOOLEAN NOT NULL DEFAULT false`)
 
 	if err := database.AutoMigrate(
 		&CheckIn{},
@@ -43,6 +45,12 @@ func Open(path string) (*gorm.DB, error) {
 	database.Exec(
 		`UPDATE check_ins SET status = 'pending', tag_received = true
 		 WHERE status = 'registered' AND tag_received = false`,
+	)
+	// Partial unique index so that ct_id=0 (used as a temporary placeholder
+	// during the two-step guest creation) is allowed more than once.
+	database.Exec(
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_synced_persons_ct_id
+		 ON synced_persons(ct_id) WHERE ct_id != 0`,
 	)
 	return database, nil
 }

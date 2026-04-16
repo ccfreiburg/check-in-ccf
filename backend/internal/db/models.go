@@ -49,4 +49,7 @@ type CheckIn struct {
 	CheckedInAt    *time.Time
 	CheckedOutAt   *time.Time // set when a volunteer checks the child out (status overridden to "")
 	LastNotifiedAt *time.Time
+	// IsGuest is true when the child belongs to a manually registered guest family (not in CT).
+	// Stored at registration time to avoid a DB lookup in hot paths.
+	IsGuest bool
 }

@@ -44,6 +44,11 @@
           v-model="activeSexSet"
           active-class="bg-gray-700 text-white"
         />
+        <FilterLabels
+          :items="[{ value: true, label: t('first_registration.guests_filter_only') }]"
+          v-model="onlyGuests"
+          active-class="bg-amber-500 text-white"
+        />
       </div>
 
       <!-- Loading / error -->
@@ -62,12 +67,15 @@
           class="bg-white rounded-xl shadow-sm px-4 py-4 flex items-center justify-between cursor-pointer hover:shadow-md active:scale-95 transition"
         >
           <div>
-            <p class="font-semibold text-gray-900">{{ parent.firstName }} {{ parent.lastName }}</p>
-            <p class="text-sm text-gray-500">
-              <span v-if="parent.groups.length">{{ parent.groups.map(g => g.name).join(', ') }}</span>
-            </p>
-            <p class="text-xs text-gray-400">{{ parent.mobile || parent.phoneNumber || parent.email }}</p>
-          </div>
+              <div class="flex items-center gap-2">
+                <p class="font-semibold text-gray-900">{{ parent.firstName }} {{ parent.lastName }}</p>
+                <span v-if="parent.isGuest" class="text-xs font-semibold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">Gast</span>
+              </div>
+              <p class="text-sm text-gray-500">
+                <span v-if="parent.groups.length">{{ parent.groups.map(g => g.name).join(', ') }}</span>
+              </p>
+              <p class="text-xs text-gray-400">{{ parent.mobile || parent.phoneNumber || parent.email }}</p>
+            </div>
           <svg class="w-5 h-5 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
           </svg>
@@ -133,8 +141,9 @@ const groups = ref<{ ID: number; Name: string }[]>([])
 const activeGroupsSet = ref(new Set<number>())
 const activeSexSet = ref(new Set<string>())
 const filtersOpen = ref(false)
+const onlyGuests = ref(new Set<boolean>())
 
-const activeFilterCount = computed(() => activeGroupsSet.value.size + activeSexSet.value.size)
+const activeFilterCount = computed(() => activeGroupsSet.value.size + activeSexSet.value.size + onlyGuests.value.size)
 
 const filterSummary = computed(() => {
   const parts: string[] = []
@@ -145,12 +154,14 @@ const filterSummary = computed(() => {
   if (activeSexSet.value.has('male') && !activeSexSet.value.has('female')) parts.push(t('first_registration.filter_summary.fathers'))
   else if (activeSexSet.value.has('female') && !activeSexSet.value.has('male')) parts.push(t('first_registration.filter_summary.mothers'))
   else if (activeSexSet.value.size === 2) parts.push(t('first_registration.filter_summary.both'))
+  if (onlyGuests.value.has(true)) parts.push(t('first_registration.guests_filter_only'))
   return parts.join(' · ')
 })
 
 function clearFilters() {
   activeGroupsSet.value = new Set()
   activeSexSet.value = new Set()
+  onlyGuests.value = new Set()
 }
 const search = ref('')
 const loading = ref(true)
@@ -162,16 +173,20 @@ const filteredChildren = computed(() => {
     list = list.filter((c) => c.groupId != null && activeGroupsSet.value.has(c.groupId))
   }
   const q = search.value.toLowerCase()
-  if (!q) return list
-  return list.filter(
-    (c) =>
-      c.firstName.toLowerCase().includes(q) ||
-      c.lastName.toLowerCase().includes(q),
-  )
+  if (q) {
+    list = list.filter(
+      (c) =>
+        c.firstName.toLowerCase().includes(q) ||
+        c.lastName.toLowerCase().includes(q),
+    )
+  }
+  return list
 })
 
 const filteredParents = computed(() => {
   let list = allParents.value
+
+  if (onlyGuests.value.has(true)) list = list.filter((p) => p.isGuest)
 
   const hasMale = activeSexSet.value.has('male')
   const hasFemale = activeSexSet.value.has('female')
@@ -191,7 +206,7 @@ const filteredParents = computed(() => {
   )
 })
 
-const showParents = computed(() => activeSexSet.value.size > 0)
+const showParents = computed(() => activeSexSet.value.size > 0 || onlyGuests.value.has(true))
 
 // Parents with no sex set — shown as a resync hint
 const noSexData = computed(
