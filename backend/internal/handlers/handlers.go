@@ -532,6 +532,7 @@ func (h *Handler) ListParents(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, result)
 }
+
 // ── Admin: check-in management ────────────────────────────────────────────
 
 // ListCheckins returns today's check-in records.
