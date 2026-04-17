@@ -114,6 +114,7 @@ func main() {
 		r.Put("/api/admin/guests/{id}", h.UpdateGuest)
 		r.Delete("/api/admin/guests/{id}", h.DeleteGuest)
 		// Check-in management (2-step flow)
+		r.Get("/api/admin/stats", h.GetStats)
 		r.Get("/api/admin/groups", h.ListGroups)
 		r.Get("/api/admin/parents", h.ListParents)
 		r.Get("/api/admin/parents/{id}", h.GetParentDetailByParentID)

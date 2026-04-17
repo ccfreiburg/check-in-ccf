@@ -25,6 +25,7 @@ export default {
     first_registration: 'Erstregistrierung',
     name_tag_handout: 'Namensschildausgabe',
     children_today: 'Kinder heute',
+    dashboard: 'Dashboard',
     admin: 'Admin-Modus',
     lang_switch: 'Sprache wechseln',
     lang_modal_heading: 'Sprache wählen',
@@ -190,6 +191,19 @@ export default {
     guest_edit: 'Bearbeiten',
     guest_delete: 'Löschen',
     guest_delete_confirm: 'Gastfamilie wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.',
+  },
+
+  // ── Dashboard ────────────────────────────────────────────────────────────
+  dashboard: {
+    title: 'Dashboard',
+    today_heading: 'Heute',
+    history_heading: 'Verlauf (letzte Events)',
+    no_data_today: 'Heute noch keine Anmeldungen.',
+    group: 'Gruppe',
+    registered: 'Angemeldet',
+    checked_in: 'Eingecheckt',
+    checked_out: 'Ausgecheckt',
+    total: 'Gesamt',
   },
 
   // ── Gastfamilie Formular ──────────────────────────────────────────────────

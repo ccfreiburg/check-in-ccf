@@ -25,6 +25,7 @@ export default {
     first_registration: 'First Registration',
     name_tag_handout: 'Name Tag Handout',
     children_today: 'Children Today',
+    dashboard: 'Dashboard',
     admin: 'Admin Mode',
     lang_switch: 'Switch language',
     lang_modal_heading: 'Select language',
@@ -190,6 +191,19 @@ export default {
     guest_edit: 'Edit',
     guest_delete: 'Delete',
     guest_delete_confirm: 'Really delete this guest family? This cannot be undone.',
+  },
+
+  // ── Dashboard ─────────────────────────────────────────────────────────────
+  dashboard: {
+    title: 'Dashboard',
+    today_heading: 'Today',
+    history_heading: 'History (last events)',
+    no_data_today: 'No registrations yet today.',
+    group: 'Group',
+    registered: 'Registered',
+    checked_in: 'Checked in',
+    checked_out: 'Checked out',
+    total: 'Total',
   },
 
   // ── Guest Form ────────────────────────────────────────────────────────────

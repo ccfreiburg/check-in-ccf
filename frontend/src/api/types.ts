@@ -102,3 +102,13 @@ export interface CreateGuestRequest {
 }
 
 export type UpdateGuestRequest = CreateGuestRequest
+
+/** Per-group statistics for one event date. */
+export interface EventGroupStat {
+  eventDate: string
+  groupId: number
+  groupName: string
+  registered: number
+  checkedIn: number
+  checkedOut: number
+}

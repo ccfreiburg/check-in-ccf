@@ -23,6 +23,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	qrcode "github.com/skip2/go-qrcode"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // ctClientIface is the subset of ct.Client methods used by handlers.
@@ -553,11 +554,112 @@ func (h *Handler) EndEvent(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Save per-group stats snapshot before wiping records.
+	type groupStat struct {
+		Name       string
+		Registered int
+		CheckedIn  int
+		CheckedOut int
+	}
+	byGroup := map[int]*groupStat{}
+	for _, r := range records {
+		if _, ok := byGroup[r.GroupID]; !ok {
+			byGroup[r.GroupID] = &groupStat{Name: r.GroupName}
+		}
+		gs := byGroup[r.GroupID]
+		gs.Registered++
+		if r.CheckedOutAt != nil {
+			gs.CheckedOut++
+		} else if r.Status == localdb.StatusCheckedIn {
+			gs.CheckedIn++
+		}
+	}
+	for gid, gs := range byGroup {
+		snap := localdb.EventStats{
+			EventDate:  today,
+			GroupID:    gid,
+			GroupName:  gs.Name,
+			Registered: gs.Registered,
+			CheckedIn:  gs.CheckedIn,
+			CheckedOut: gs.CheckedOut,
+		}
+		h.db.Clauses(clause.OnConflict{UpdateAll: true}).Create(&snap)
+	}
+
 	if err := h.db.Unscoped().Where("event_date = ?", today).Delete(&localdb.CheckIn{}).Error; err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// GetStats returns per-group, per-event attendance statistics.
+// Historical data comes from event_stats snapshots (saved at EndEvent).
+// Today's data is aggregated live from check_ins.
+func (h *Handler) GetStats(w http.ResponseWriter, r *http.Request) {
+	type statsRow struct {
+		EventDate  string `json:"eventDate"`
+		GroupID    int    `json:"groupId"`
+		GroupName  string `json:"groupName"`
+		Registered int    `json:"registered"`
+		CheckedIn  int    `json:"checkedIn"`
+		CheckedOut int    `json:"checkedOut"`
+	}
+
+	today := localdb.Today()
+
+	// Historical snapshots from past events.
+	var snapshots []localdb.EventStats
+	h.db.Where("event_date != ?", today).
+		Order("event_date DESC, group_name ASC").
+		Find(&snapshots)
+
+	result := make([]statsRow, 0, len(snapshots)+8)
+	for _, s := range snapshots {
+		result = append(result, statsRow{
+			EventDate:  s.EventDate,
+			GroupID:    s.GroupID,
+			GroupName:  s.GroupName,
+			Registered: s.Registered,
+			CheckedIn:  s.CheckedIn,
+			CheckedOut: s.CheckedOut,
+		})
+	}
+
+	// Today's live data (includes soft-deleted checked-out records via Unscoped).
+	type liveRow struct {
+		GroupID    int
+		GroupName  string
+		Registered int
+		CheckedIn  int
+		CheckedOut int
+	}
+	var live []liveRow
+	h.db.Unscoped().Model(&localdb.CheckIn{}).
+		Select(`group_id, group_name,
+			COUNT(*) AS registered,
+			SUM(CASE WHEN status = 'checked_in' AND checked_out_at IS NULL THEN 1 ELSE 0 END) AS checked_in,
+			SUM(CASE WHEN checked_out_at IS NOT NULL THEN 1 ELSE 0 END) AS checked_out`).
+		Where("event_date = ?", today).
+		Group("group_id, group_name").
+		Order("group_name ASC").
+		Scan(&live)
+
+	for _, l := range live {
+		result = append(result, statsRow{
+			EventDate:  today,
+			GroupID:    l.GroupID,
+			GroupName:  l.GroupName,
+			Registered: l.Registered,
+			CheckedIn:  l.CheckedIn,
+			CheckedOut: l.CheckedOut,
+		})
+	}
+
+	if result == nil {
+		result = []statsRow{}
+	}
+	writeJSON(w, http.StatusOK, result)
 }
 
 func (h *Handler) ListCheckins(w http.ResponseWriter, r *http.Request) {

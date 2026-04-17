@@ -22,6 +22,17 @@ type PushSubscription struct {
 	Auth     string
 }
 
+// EventStats stores a per-group, per-event attendance snapshot.
+// One row per (EventDate, GroupID), populated when EndEvent is called.
+type EventStats struct {
+	EventDate  string `gorm:"primaryKey;not null"`
+	GroupID    int    `gorm:"primaryKey;not null"`
+	GroupName  string
+	Registered int
+	CheckedIn  int
+	CheckedOut int
+}
+
 // CheckIn tracks a child's arrival and check-in state for a single service day.
 // One record per (EventDate, ChildID), created when the parent taps "Anmelden".
 type CheckIn struct {

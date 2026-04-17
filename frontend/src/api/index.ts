@@ -1,4 +1,4 @@
-import type { Child, Parent, Person, CheckInRecord, ParentDetail, ParentCheckinPage, CheckInStatus, EventReport, CreateGuestRequest, UpdateGuestRequest } from './types'
+import type { Child, Parent, Person, CheckInRecord, ParentDetail, ParentCheckinPage, CheckInStatus, EventReport, CreateGuestRequest, UpdateGuestRequest, EventGroupStat } from './types'
 
 const BASE = '/api'
 
@@ -260,4 +260,12 @@ export async function deleteGuest(id: number): Promise<void> {
     headers: authHeaders(),
   })
   if (!res.ok) throw new ApiError(res.status, await res.text())
+}
+
+// ── Statistics ────────────────────────────────────────────────────────────
+
+export async function getStats(): Promise<EventGroupStat[]> {
+  const res = await fetch(`${BASE}/admin/stats`, { headers: authHeaders() })
+  const data = await handleResponse<EventGroupStat[] | null>(res)
+  return data ?? []
 }

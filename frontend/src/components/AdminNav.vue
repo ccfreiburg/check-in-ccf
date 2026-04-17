@@ -134,10 +134,11 @@ function setLocale(code: string) {
 }
 
 const allNavLinks = [
-  { to: '/admin',          labelKey: 'nav.first_registration', adminOnly: false },
-  { to: '/admin/tags',     labelKey: 'nav.name_tag_handout',   adminOnly: false },
-  { to: '/admin/today',    labelKey: 'nav.children_today',     adminOnly: false },
-  { to: '/admin/settings', labelKey: 'nav.admin',              adminOnly: true  },
+  { to: '/admin',           labelKey: 'nav.first_registration', adminOnly: false },
+  { to: '/admin/tags',      labelKey: 'nav.name_tag_handout',   adminOnly: false },
+  { to: '/admin/today',     labelKey: 'nav.children_today',     adminOnly: false },
+  { to: '/admin/dashboard', labelKey: 'nav.dashboard',          adminOnly: false },
+  { to: '/admin/settings',  labelKey: 'nav.admin',              adminOnly: true  },
 ]
 const navLinks = computed(() =>
   allNavLinks.filter(l => !l.adminOnly || auth.isAdmin)
