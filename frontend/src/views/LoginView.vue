@@ -7,6 +7,7 @@
           v-if="!localPassword"
           v-model="username"
           type="email"
+          data-testid="login-username"
           :placeholder="t('login.username_placeholder')"
           autocomplete="username"
           @keyup.enter="submit"
@@ -15,6 +16,7 @@
         <input
           v-model="password"
           type="password"
+          data-testid="login-password"
           :placeholder="t('login.password_placeholder')"
           autocomplete="current-password"
           @keyup.enter="submit"
@@ -23,11 +25,12 @@
         <button
           @click="submit"
           :disabled="loading"
+          data-testid="login-submit"
           class="w-full bg-blue-600 text-white rounded-xl py-3 text-base font-semibold hover:bg-blue-700 disabled:opacity-50 transition"
         >
           {{ loading ? t('login.signing_in') : t('login.sign_in') }}
         </button>
-        <p v-if="error" class="text-red-500 text-sm text-center">{{ error }}</p>
+        <p v-if="error" data-testid="login-error" class="text-red-500 text-sm text-center">{{ error }}</p>
       </div>
     </div>
   </div>

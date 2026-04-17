@@ -9,3 +9,4 @@ backend/checkin.db
 frontend/.env
 frontend/dist/
 frontend/node_modules/
+frontend/test-results/.last-run.json

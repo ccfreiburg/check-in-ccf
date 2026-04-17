@@ -12,6 +12,7 @@
             :items="filtered.map(toCardItem)"
             :busy="busy"
             variant="door"
+            data-testid="tag-handout-list"
             :empty-text="t('tag_handout.no_checkins')"
             @confirm-tag="handleConfirmTag"
           />

@@ -17,7 +17,7 @@
 
       <template v-else-if="detail">
         <!-- Parent card -->
-        <div class="bg-white rounded-2xl shadow-sm p-5">
+        <div class="bg-white rounded-2xl shadow-sm p-5" data-testid="parent-detail-card">
           <div class="flex items-start justify-between mb-3">
             <h2 class="text-lg font-bold text-gray-900">
               {{ detail.parent.firstName }} {{ detail.parent.lastName }}
@@ -73,7 +73,7 @@
         <p v-if="qrError" class="text-red-500 text-sm text-center">{{ qrError }}</p>
 
         <!-- QR code display -->
-        <div v-if="qrBlob" class="flex flex-col items-center gap-4">
+        <div v-if="qrBlob" class="flex flex-col items-center gap-4" data-testid="qr-section">
           <div class="bg-white rounded-2xl shadow-sm p-4">
             <img :src="qrBlobUrl" alt="QR Code" class="w-64 h-64 object-contain" />
           </div>

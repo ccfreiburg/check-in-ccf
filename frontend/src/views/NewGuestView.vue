@@ -21,12 +21,12 @@
           <div class="grid grid-cols-2 gap-3">
             <div>
               <label class="block text-sm text-gray-500 mb-1">{{ t('guest_form.first_name') }} *</label>
-              <input v-model="form.parent.firstName" type="text" class="w-full border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" :class="{ 'border-red-400': errors.parentFirstName }" />
+              <input v-model="form.parent.firstName" type="text" data-testid="guest-parent-firstname" class="w-full border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" :class="{ 'border-red-400': errors.parentFirstName }" />
               <p v-if="errors.parentFirstName" class="text-red-500 text-xs mt-1">{{ errors.parentFirstName }}</p>
             </div>
             <div>
               <label class="block text-sm text-gray-500 mb-1">{{ t('guest_form.last_name') }} *</label>
-              <input v-model="form.parent.lastName" type="text" class="w-full border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" :class="{ 'border-red-400': errors.parentLastName }" />
+              <input v-model="form.parent.lastName" type="text" data-testid="guest-parent-lastname" class="w-full border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" :class="{ 'border-red-400': errors.parentLastName }" />
               <p v-if="errors.parentLastName" class="text-red-500 text-xs mt-1">{{ errors.parentLastName }}</p>
             </div>
           </div>
@@ -38,6 +38,7 @@
                 v-for="opt in sexOptions"
                 :key="opt.value"
                 @click="form.parent.sex = opt.value"
+                :data-testid="`role-btn-${opt.value || 'other'}`"
                 :class="form.parent.sex === opt.value ? 'bg-blue-600 text-white' : 'bg-white border border-gray-300 text-gray-700'"
                 class="px-4 py-2 rounded-xl text-sm font-medium transition"
               >{{ opt.label }}</button>
@@ -46,7 +47,7 @@
 
           <div>
             <label class="block text-sm text-gray-500 mb-1">{{ t('guest_form.mobile') }}</label>
-            <input v-model="form.parent.mobile" type="tel" class="w-full border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" :class="{ 'border-red-400': errors.parentMobile }" />
+            <input v-model="form.parent.mobile" type="tel" data-testid="guest-parent-mobile" class="w-full border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" :class="{ 'border-red-400': errors.parentMobile }" />
             <p v-if="errors.parentMobile" class="text-red-500 text-xs mt-1">{{ errors.parentMobile }}</p>
           </div>
         </div>
@@ -55,7 +56,7 @@
         <div class="bg-white rounded-2xl shadow-sm p-5 space-y-4">
           <div class="flex items-center justify-between">
             <h2 class="font-semibold text-gray-700">{{ t('guest_form.children_heading') }}</h2>
-            <button @click="addChild" class="text-blue-600 text-sm font-medium hover:underline">+ {{ t('guest_form.add_child') }}</button>
+            <button @click="addChild" data-testid="add-child-btn" class="text-blue-600 text-sm font-medium hover:underline">+ {{ t('guest_form.add_child') }}</button>
           </div>
 
           <p v-if="form.children.length === 0" class="text-sm text-gray-400 text-center py-2">{{ t('guest_form.no_children_hint') }}</p>
@@ -68,12 +69,12 @@
             <div class="grid grid-cols-2 gap-3">
               <div>
                 <label class="block text-xs text-gray-500 mb-1">{{ t('guest_form.first_name') }} *</label>
-                <input v-model="child.firstName" type="text" class="w-full border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" :class="{ 'border-red-400': errors[`child_${idx}_firstName`] }" />
+                <input v-model="child.firstName" type="text" :data-testid="`guest-child-${idx}-firstname`" class="w-full border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" :class="{ 'border-red-400': errors[`child_${idx}_firstName`] }" />
                 <p v-if="errors[`child_${idx}_firstName`]" class="text-red-500 text-xs mt-1">{{ errors[`child_${idx}_firstName`] }}</p>
               </div>
               <div>
                 <label class="block text-xs text-gray-500 mb-1">{{ t('guest_form.last_name') }} *</label>
-                <input v-model="child.lastName" type="text" class="w-full border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" :class="{ 'border-red-400': errors[`child_${idx}_lastName`] }" />
+                <input v-model="child.lastName" type="text" :data-testid="`guest-child-${idx}-lastname`" class="w-full border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" :class="{ 'border-red-400': errors[`child_${idx}_lastName`] }" />
                 <p v-if="errors[`child_${idx}_lastName`]" class="text-red-500 text-xs mt-1">{{ errors[`child_${idx}_lastName`] }}</p>
               </div>
             </div>
@@ -84,7 +85,7 @@
               </div>
               <div>
                 <label class="block text-xs text-gray-500 mb-1">{{ t('guest_form.group') }} *</label>
-                <select v-model="child.groupId" @change="onGroupChange(child)" class="w-full border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" :class="{ 'border-red-400': errors[`child_${idx}_group`] }">
+                <select v-model="child.groupId" @change="onGroupChange(child)" :data-testid="`guest-child-${idx}-group`" class="w-full border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" :class="{ 'border-red-400': errors[`child_${idx}_group`] }">
                   <option value="">{{ t('guest_form.group_placeholder') }}</option>
                   <option v-for="g in groups" :key="g.ID" :value="g.ID">{{ g.Name }}</option>
                 </select>
@@ -101,6 +102,7 @@
         <button
           @click="submit"
           :disabled="busy"
+          data-testid="guest-submit"
           class="w-full bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-semibold py-3 rounded-xl text-base disabled:opacity-50 transition"
         >
           {{ busy ? t('common.please_wait') : t('guest_form.submit') }}

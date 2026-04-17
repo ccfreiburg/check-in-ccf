@@ -12,6 +12,7 @@
             :items="filtered.map(toCardItem)"
             :busy="busy"
             :variant="auth.isAdmin ? 'admin' : 'volunteer'"
+            data-testid="children-today-list"
             :empty-text="t('children_today.no_children')"
             @confirm-tag="handleConfirmTag"
             @check-in="handleCheckIn"

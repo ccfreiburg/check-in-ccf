@@ -59,8 +59,8 @@
 
       <template v-else-if="page">
         <!-- Welcome banner -->
-        <div class="bg-blue-50 border border-blue-200 rounded-2xl px-5 py-4 space-y-3">
-          <p class="text-blue-800 font-medium">
+        <div class="bg-blue-50 border border-blue-200 rounded-2xl px-5 py-4 space-y-3" data-testid="welcome-banner">
+          <p class="text-blue-800 font-medium" data-testid="welcome-greeting">
             {{ t('parent.greeting', { firstName: page.parent.firstName, lastName: page.parent.lastName }) }}
           </p>
           <div class="flex items-center gap-2">
@@ -122,11 +122,12 @@
             v-if="pushState === 'available' && (!isIos || isStandalone)"
             @click="enablePush"
             :disabled="pushBusy"
+            data-testid="enable-push-btn"
             class="flex items-center gap-2 text-sm font-medium text-green-700 bg-green-100 hover:bg-green-200 active:bg-green-300 px-4 py-2 rounded-xl transition active:scale-95 disabled:opacity-50"
           >
             🔔 {{ t('parent.enable_push') }}
           </button>
-          <p v-if="pushState === 'granted'" class="text-xs text-green-700">{{ t('parent.push_granted') }}</p>
+          <p v-if="pushState === 'granted'" data-testid="push-granted" class="text-xs text-green-700">{{ t('parent.push_granted') }}</p>
           <p v-if="pushState === 'denied'" class="text-xs text-yellow-700">{{ t('parent.push_denied') }}</p>
           <p v-if="pushError" class="text-xs text-red-600">{{ t('parent.push_error', { error: pushError }) }}</p>
 

@@ -1,5 +1,5 @@
 <template>
-  <div class="bg-white rounded-2xl shadow-sm p-4">
+  <div class="bg-white rounded-2xl shadow-sm p-4" :data-testid="`child-card-${item.id}`">
     <!-- Header: name + status badge -->
     <div class="flex items-start justify-between mb-3">
       <div>
@@ -31,6 +31,7 @@
       v-if="variant === 'parent' && item.status === ''"
       @click="emit('register')"
       :disabled="busy"
+      data-testid="register-btn"
       class="mt-1 w-full bg-green-600 hover:bg-green-700 active:bg-green-800 text-white font-semibold py-3 rounded-xl text-base disabled:opacity-50 transition active:scale-95"
     >
       <span v-if="busy">{{ t('common.please_wait') }}</span>
@@ -50,6 +51,7 @@
       v-if="variant === 'door'"
       @click="emit('confirm-tag')"
       :disabled="busy"
+      data-testid="confirm-tag-btn"
       :class="item.tagReceived
         ? 'bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white'
         : 'bg-white border border-blue-400 text-blue-700 hover:bg-blue-50'"
@@ -66,6 +68,7 @@
           v-if="item.status === 'pending'"
           @click="emit('check-in')"
           :disabled="busy"
+          data-testid="checkin-btn"
           class="flex-1 bg-green-600 hover:bg-green-700 active:bg-green-800 text-white font-semibold py-2.5 rounded-xl text-sm disabled:opacity-50 transition"
         >
           {{ busy ? t('common.please_wait') : t('child_card.check_in') }}
@@ -74,6 +77,7 @@
           v-else-if="item.status === 'checked_in'"
           @click="emit('override', '')"
           :disabled="busy"
+          data-testid="checkout-btn"
           class="flex-1 bg-gray-700 hover:bg-gray-800 active:bg-gray-900 text-white font-semibold py-2.5 rounded-xl text-sm disabled:opacity-50 transition"
         >
           {{ busy ? t('common.please_wait') : t('child_card.check_out') }}
@@ -81,6 +85,7 @@
         <button
           v-if="item.status !== ''"
           @click="emit('detail')"
+          data-testid="detail-btn"
           class="px-4 py-2.5 rounded-xl text-sm font-medium bg-white border border-gray-300 text-gray-500 hover:bg-gray-50 transition"
         >
           {{ t('child_card.detail_short') }}
@@ -95,6 +100,7 @@
           v-if="item.status === 'pending'"
           @click="emit('check-in')"
           :disabled="busy"
+          data-testid="checkin-btn"
           class="flex-1 bg-green-600 hover:bg-green-700 active:bg-green-800 text-white font-semibold py-2.5 rounded-xl text-sm disabled:opacity-50 transition"
         >
           {{ busy ? t('common.please_wait') : t('child_card.check_in') }}
@@ -103,12 +109,14 @@
           v-else-if="item.status === 'checked_in'"
           @click="emit('override', '')"
           :disabled="busy"
+          data-testid="checkout-btn"
           class="flex-1 bg-gray-700 hover:bg-gray-800 active:bg-gray-900 text-white font-semibold py-2.5 rounded-xl text-sm disabled:opacity-50 transition"
         >
           {{ busy ? t('common.please_wait') : t('child_card.check_out') }}
         </button>
         <button
           @click="emit('detail')"
+          data-testid="detail-btn"
           class="px-4 py-2.5 rounded-xl text-sm font-medium bg-white border border-gray-300 text-gray-500 hover:bg-gray-50 transition"
         >
           {{ t('child_card.detail_short') }}

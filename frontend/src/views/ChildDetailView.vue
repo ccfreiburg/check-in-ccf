@@ -58,6 +58,7 @@
             v-if="record.Status === 'pending'"
             @click="doCheckIn"
             :disabled="busy"
+            data-testid="checkin-btn"
             class="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-3 rounded-xl text-base disabled:opacity-50 transition"
           >
             {{ busy ? t('common.please_wait') : t('child_detail.check_in') }}
@@ -76,6 +77,7 @@
             v-if="record.Status === 'checked_in'"
             @click="notifySent ? cancelNotify() : doNotify()"
             :disabled="busy || (!notifySent && noSubscription)"
+            data-testid="notify-btn"
             :class="notifySent
               ? 'bg-orange-500 hover:bg-orange-600 text-white border-transparent'
               : 'bg-white border border-orange-400 text-orange-600 hover:bg-orange-50'"

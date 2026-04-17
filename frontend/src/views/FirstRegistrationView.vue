@@ -7,6 +7,7 @@
       <input
         v-model="search"
         type="search"
+        data-testid="first-reg-search"
         :placeholder="t('first_registration.search_placeholder')"
         class="w-full border border-gray-300 rounded-xl px-4 py-3 text-base mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500"
       />
@@ -86,10 +87,11 @@
       </ul>
 
       <!-- Child list (default) -->
-      <ul v-else class="space-y-2">
+      <ul v-else class="space-y-2" data-testid="child-list">
         <li
           v-for="child in filteredChildren"
           :key="child.id"
+          :data-testid="`child-item-${child.id}`"
           @click="open(child.id)"
           class="bg-white rounded-xl shadow-sm px-4 py-4 flex items-center justify-between cursor-pointer hover:shadow-md active:scale-95 transition"
         >
@@ -110,6 +112,7 @@
       <div class="sticky bottom-6 flex justify-end mt-4 pointer-events-none">
         <button
           @click="router.push({ name: 'guest-new' })"
+          data-testid="add-guest-fab"
           class="pointer-events-auto w-14 h-14 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white rounded-full shadow-lg flex items-center justify-center transition"
         >
           <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
