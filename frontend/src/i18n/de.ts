@@ -26,6 +26,7 @@ export default {
     name_tag_handout: 'Namensschildausgabe',
     children_today: 'Kinder heute',
     dashboard: 'Dashboard',
+    stats: 'Verlauf',
     admin: 'Admin-Modus',
     lang_switch: 'Sprache wechseln',
     lang_modal_heading: 'Sprache wählen',
@@ -204,6 +205,14 @@ export default {
     checked_in: 'Eingecheckt',
     checked_out: 'Ausgecheckt',
     total: 'Gesamt',
+  },
+
+  // ── Verlauf (Statistik) ────────────────────────────────────────────────
+  stats: {
+    title: 'Besuchsentwicklung',
+    no_data: 'Noch keine abgeschlossenen Events vorhanden.',
+    n_events: '{n} Events',
+    total_all_groups: 'Gesamt – alle Gruppen',
   },
 
   // ── Gastfamilie Formular ──────────────────────────────────────────────────

@@ -138,6 +138,7 @@ const allNavLinks = [
   { to: '/admin/tags',      labelKey: 'nav.name_tag_handout',   adminOnly: false },
   { to: '/admin/today',     labelKey: 'nav.children_today',     adminOnly: false },
   { to: '/admin/dashboard', labelKey: 'nav.dashboard',          adminOnly: false },
+  { to: '/admin/stats',     labelKey: 'nav.stats',              adminOnly: false },
   { to: '/admin/settings',  labelKey: 'nav.admin',              adminOnly: true  },
 ]
 const navLinks = computed(() =>

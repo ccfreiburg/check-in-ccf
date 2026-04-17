@@ -58,6 +58,11 @@ const router = createRouter({
       meta: { requiresAuth: true },
     },
     {
+      path: '/admin/stats',
+      component: () => import('../views/StatsView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
       path: '/admin/tags',
       component: () => import('../views/TagHandoutView.vue'),
       meta: { requiresAuth: true },

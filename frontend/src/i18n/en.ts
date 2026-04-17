@@ -26,6 +26,7 @@ export default {
     name_tag_handout: 'Name Tag Handout',
     children_today: 'Children Today',
     dashboard: 'Dashboard',
+    stats: 'Trends',
     admin: 'Admin Mode',
     lang_switch: 'Switch language',
     lang_modal_heading: 'Select language',
@@ -204,6 +205,14 @@ export default {
     checked_in: 'Checked in',
     checked_out: 'Checked out',
     total: 'Total',
+  },
+
+  // ── Trends (Statistics) ───────────────────────────────────────────────
+  stats: {
+    title: 'Attendance Trends',
+    no_data: 'No completed events yet.',
+    n_events: '{n} events',
+    total_all_groups: 'Total – all groups',
   },
 
   // ── Guest Form ────────────────────────────────────────────────────────────
