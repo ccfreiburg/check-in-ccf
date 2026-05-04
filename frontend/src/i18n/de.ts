@@ -15,6 +15,7 @@ export default {
     not_found: 'Nicht gefunden.',
     close: '\u00d7',
     ccf_alt: 'CCF',
+    goto_login: 'Mitarbeiter Login',
   },
 
   // ── Navigation ───────────────────────────────────────────────────────────
@@ -45,7 +46,7 @@ export default {
     title: 'Kinder Anmeldung',
     greeting: 'Hallo {firstName} {lastName}',
     subtitle: 'Du kannst hier deine Kinder für den heutigen Tag anmelden.',
-    link_expired: 'Dieser Link ist möglicherweise abgelaufen. Bitte beim Dienst einen neuen QR-Code anfordern.',
+    link_expired: 'Dieser Familien-Link ist abgelaufen. Bitte bei einem Mitarbeiter einen neuen QR-Code anfordern.',
     qr_button_title: 'QR-Code',
     qr_alt: 'QR-Code',
     share_qr: 'QR-Code teilen',

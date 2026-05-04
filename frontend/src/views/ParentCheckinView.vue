@@ -52,9 +52,16 @@
 
     <div class="max-w-2xl mx-auto px-4 py-6 space-y-6">
       <div v-if="loading" class="text-center text-gray-400 py-16">{{ t('common.loading') }}</div>
-      <div v-else-if="error" class="text-center py-16 space-y-3">
-        <p class="text-red-500 font-medium">{{ error }}</p>
-        <p class="text-sm text-gray-400">{{ t('parent.link_expired') }}</p>
+      <div v-else-if="error" class="h-full flex flex-col items-center py-16 space-y-12 justify-between bg-gray-200 rounded-2xl ">
+        <p class="text-md text-center px-10">{{ t('parent.link_expired') }}</p>
+        <button
+          @click="goLogin"
+          data-testid="goto-login"
+          class="w-50 bg-blue-600 text-white rounded-xl py-3 text-base font-semibold hover:bg-blue-700 disabled:opacity-50 transition"
+        >
+          {{ t('common.goto_login') }}
+        </button>
+        <p class="text-gray-300 text-sm">{{ error }}</p>
       </div>
 
       <template v-else-if="page">
@@ -156,7 +163,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { registerChild } from '../api'
 import { subscribeToPush } from '../utils/push'
 import type { ChildWithStatus } from '../api/types'
@@ -167,6 +174,7 @@ import { setLocale as persistLocale } from '../i18n'
 
 const pageUrl = window.location.href
 
+const router = useRouter()
 const route = useRoute()
 const token = route.params.token as string
 const { t, locale } = useI18n()
@@ -311,6 +319,11 @@ async function handleRegister(item: ChildCardItem) {
     busy[item.id] = false
   }
 }
+
+function goLogin() {
+  router.push({ name: 'login' })
+}
+
 
 function showFlash(msg: string) {
   flashMsg.value = msg

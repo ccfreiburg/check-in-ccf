@@ -15,6 +15,8 @@ export default {
     not_found: 'Not found.',
     close: '\u00d7',
     ccf_alt: 'CCF',
+    goto_login: 'Staff Login',
+
   },
 
   // ── Navigation ───────────────────────────────────────────────────────────
@@ -45,7 +47,7 @@ export default {
     title: 'Child Registration',
     greeting: 'Hello {firstName} {lastName}',
     subtitle: 'Register your children for today\'s service here.',
-    link_expired: 'This link may have expired. Please ask staff for a new QR code.',
+    link_expired: 'This family link has expired. Please ask staff for a new QR code.',
     qr_button_title: 'QR Code',
     qr_alt: 'QR Code',
     share_qr: 'Share QR Code',
