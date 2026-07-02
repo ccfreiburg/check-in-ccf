@@ -181,7 +181,7 @@ onMounted(async () => {
   try {
     const all = await listCheckins()
     record.value = all.find((r) => r.ID === id) ?? null
-    hasParentParticipation.value = record.value?.GroupID === Number(import.meta.env.VITE_APP_PARENT_PARTICIPATION_GROUP_IDS)
+    hasParentParticipation.value = record.value?.GroupID === Number(import.meta.env.VITE_APP_PARENT_PARTICIPATION_GROUP_ID)
     notifySent.value = !!record.value?.LastNotifiedAt
     if (record.value?.ChildID) {
       try {

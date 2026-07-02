@@ -119,7 +119,7 @@ export default {
     full_reset: 'Ganz zurück',
     error_send: 'Fehler beim Senden',
     error_fallback: 'Fehler',
-    parent_participation: 'Aufsicht',
+    parent_participation: 'Begleitung',
   },
 
   // ── Admin-Modus ───────────────────────────────────────────────────────────
