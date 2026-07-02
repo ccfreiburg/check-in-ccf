@@ -35,7 +35,9 @@
         <!-- Parent cards -->
         <div v-if="parents.length" class="bg-white rounded-2xl shadow-sm p-5 space-y-4">
           <p class="text-xs text-gray-400 uppercase font-semibold">{{ t('child_detail.parents_section') }}</p>
-          <div v-for="p in parents" :key="p.id" class="space-y-0.5">
+          <div v-for="p in parents" :key="p.id" class="space-y-0.5 flex justify-between items-center">
+            <div>
+
             <p class="font-semibold text-gray-900">{{ p.firstName }} {{ p.lastName }}</p>
             <a
               v-if="p.mobile"
@@ -48,6 +50,15 @@
               class="block text-sm text-blue-600 hover:underline"
             >{{ p.phoneNumber }}</a>
             <p v-if="p.email" class="text-sm text-gray-500">{{ p.email }}</p>
+            </div>
+          <div v-if="hasParentParticipation" class="text-sm text-gray-500">
+                <button
+                   data-testid="notify-btn"
+                   class="w-full font-semibold py-3 rounded-xl text-base disabled:opacity-50 transition border px-4"
+          >
+          {{ t('child_detail.parent_participation') }}
+          </button>
+            </div>
           </div>
         </div>
 
@@ -164,11 +175,13 @@ const busy = ref(false)
 const errorMsg = ref('')
 const noSubscription = ref(false)
 const notifySent = ref(false)
+const hasParentParticipation = ref(false)
 
 onMounted(async () => {
   try {
     const all = await listCheckins()
     record.value = all.find((r) => r.ID === id) ?? null
+    hasParentParticipation.value = record.value?.GroupID === Number(import.meta.env.VITE_APP_PARENT_PARTICIPATION_GROUP_IDS)
     notifySent.value = !!record.value?.LastNotifiedAt
     if (record.value?.ChildID) {
       try {

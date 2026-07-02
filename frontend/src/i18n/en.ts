@@ -120,6 +120,7 @@ export default {
     full_reset: 'Full reset',
     error_send: 'Error sending notification',
     error_fallback: 'Error',
+    parent_participation: 'Aufsicht',
   },
 
   // ── Admin Mode ────────────────────────────────────────────────────────────
