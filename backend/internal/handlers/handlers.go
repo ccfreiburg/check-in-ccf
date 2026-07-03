@@ -552,6 +552,10 @@ func (h *Handler) EndEvent(w http.ResponseWriter, r *http.Request) {
 			slog.Warn("EndEvent: failed to generate report", "err", err)
 			// non-fatal: proceed with deletion
 		}
+		// generate accompanying parents report (if any)
+		if err := h.generateParentReport(today); err != nil {
+			slog.Warn("EndEvent: failed to generate accompanying parents report", "err", err)
+		}
 	}
 
 	// Save per-group stats snapshot before wiping records.
@@ -1291,6 +1295,113 @@ func nextReportSeq(dir, date string) (int, error) {
 	return len(matches) + 1, nil
 }
 
+// generateParentReport writes a CSV file with accompanying parents for the given date.
+func (h *Handler) generateParentReport(date string) error {
+	if err := os.MkdirAll(h.reportsDir, 0750); err != nil {
+		return fmt.Errorf("create reports dir: %w", err)
+	}
+	seq, err := nextParentReportSeq(h.reportsDir, date)
+	if err != nil {
+		return err
+	}
+	filename := fmt.Sprintf("%s_parents_%03d.csv", date, seq)
+	path := filepath.Join(h.reportsDir, filename)
+	f, err := os.Create(path)
+	if err != nil {
+		return fmt.Errorf("create parent report file: %w", err)
+	}
+	defer f.Close()
+
+	var recs []localdb.AccompanyingParent
+	h.db.Where("event_date = ?", date).Order("start_time asc").Find(&recs)
+	if len(recs) == 0 {
+		// nothing to write; remove empty file and return nil
+		f.Close()
+		os.Remove(path)
+		return nil
+	}
+
+	cw := csv.NewWriter(f)
+	_ = cw.Write([]string{"Eltern-ID", "Vorname", "Nachname", "Startzeit", "Endzeit"})
+	for _, r := range recs {
+		start := ""
+		end := ""
+		if r.StartTime != nil {
+			start = r.StartTime.Format("15:04:05")
+		}
+		if r.EndTime != nil {
+			end = r.EndTime.Format("15:04:05")
+		}
+		_ = cw.Write([]string{fmt.Sprintf("%d", r.ParentID), r.FirstName, r.LastName, start, end})
+	}
+	cw.Flush()
+	return cw.Error()
+}
+
+func nextParentReportSeq(dir, date string) (int, error) {
+	matches, err := filepath.Glob(filepath.Join(dir, date+"_parents_*.csv"))
+	if err != nil {
+		return 0, err
+	}
+	return len(matches) + 1, nil
+}
+
+// ListParentReports returns metadata for saved accompanying parent CSV files.
+func (h *Handler) ListParentReports(w http.ResponseWriter, r *http.Request) {
+	type reportEntry struct {
+		Filename string `json:"filename"`
+		Date     string `json:"date"`
+		Size     int64  `json:"size"`
+	}
+	entries, err := os.ReadDir(h.reportsDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			writeJSON(w, http.StatusOK, []reportEntry{})
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	var result []reportEntry
+	parentRe := regexp.MustCompile(`^[0-9]{4}-[0-9]{2}-[0-9]{2}_parents_[0-9]{3}\.csv$`)
+	for _, e := range entries {
+		if e.IsDir() || !parentRe.MatchString(e.Name()) {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		result = append(result, reportEntry{Filename: e.Name(), Date: e.Name()[:10], Size: info.Size()})
+	}
+	sort.Slice(result, func(i, j int) bool { return result[i].Filename > result[j].Filename })
+	writeJSON(w, http.StatusOK, result)
+}
+
+// GetParentReport serves a single accompanying parents CSV file for download.
+func (h *Handler) GetParentReport(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "filename")
+	parentRe := regexp.MustCompile(`^[0-9]{4}-[0-9]{2}-[0-9]{2}_parents_[0-9]{3}\.csv$`)
+	if !parentRe.MatchString(name) {
+		http.Error(w, "invalid filename", http.StatusBadRequest)
+		return
+	}
+	path := filepath.Join(h.reportsDir, name)
+	f, err := os.Open(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer f.Close()
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, name))
+	_, _ = io.Copy(w, f)
+}
+
 // ListReports returns metadata for all saved event report CSV files, newest first.
 func (h *Handler) ListReports(w http.ResponseWriter, r *http.Request) {
 	type reportEntry struct {
@@ -1531,4 +1642,49 @@ func (h *Handler) ClearNotify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, record)
+}
+
+// ToggleAccompanyingParent records a start or end time for a parent accompanying a child.
+// POST /api/admin/parents/{id}/accompany
+func (h *Handler) ToggleAccompanyingParent(w http.ResponseWriter, r *http.Request) {
+	parentID, err := strconv.Atoi(chi.URLParam(r, "id"))
+	if err != nil {
+		http.Error(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+	var parent localdb.SyncedPerson
+	if err := h.db.First(&parent, parentID).Error; err != nil {
+		http.Error(w, "parent not found", http.StatusNotFound)
+		return
+	}
+
+	today := localdb.Today()
+	var ap localdb.AccompanyingParent
+	// Find an open record (no EndTime) for today
+	if err := h.db.Where("event_date = ? AND parent_id = ? AND end_time IS NULL", today, parentID).First(&ap).Error; err == nil && ap.ID != 0 {
+		// close it
+		now := time.Now()
+		ap.EndTime = &now
+		if err := h.db.Save(&ap).Error; err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, http.StatusOK, ap)
+		return
+	}
+
+	// create a new accompanying parent record with StartTime
+	now := time.Now()
+	newRec := localdb.AccompanyingParent{
+		EventDate: today,
+		ParentID:  parentID,
+		FirstName: parent.FirstName,
+		LastName:  parent.LastName,
+		StartTime: &now,
+	}
+	if err := h.db.Create(&newRec).Error; err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusCreated, newRec)
 }

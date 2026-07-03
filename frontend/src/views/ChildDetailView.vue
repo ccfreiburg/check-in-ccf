@@ -53,7 +53,9 @@
             </div>
           <div v-if="hasParentParticipation" class="text-sm text-gray-500">
                 <button
-                   data-testid="notify-btn"
+                   @click="toggleParticipation(p.id)"
+                   :disabled="busy"
+                   :class="participationActive[p.id] ? 'bg-green-600 text-white' : 'bg-white border text-gray-600'"
                    class="w-full font-semibold py-3 rounded-xl text-base disabled:opacity-50 transition border px-4"
           >
           {{ t('child_detail.parent_participation') }}
@@ -160,6 +162,7 @@ import { useAuthStore } from '../stores/auth'
 import { useStatusHelpers, statusClass, formatTime } from '../utils/status'
 import type { CheckInRecord, Person } from '../api/types'
 import AdminNav from '../components/AdminNav.vue'
+import { toggleAccompanyingParent } from '../api'
 
 const route = useRoute()
 const router = useRouter()
@@ -176,6 +179,7 @@ const errorMsg = ref('')
 const noSubscription = ref(false)
 const notifySent = ref(false)
 const hasParentParticipation = ref(false)
+const participationActive = ref<Record<number, boolean>>({})
 
 onMounted(async () => {
   try {
@@ -186,6 +190,8 @@ onMounted(async () => {
     if (record.value?.ChildID) {
       try {
         parents.value = await getChildParents(record.value.ChildID)
+        // initialize participation map
+        parents.value.forEach((pp) => { participationActive.value[pp.id] = false })
       } catch {
         // best-effort: silently ignore if parent lookup fails
       }
@@ -282,5 +288,19 @@ async function cancelNotify() {
 function logout() {
   auth.logout()
   router.push('/login')
+}
+
+async function toggleParticipation(parentId: number) {
+  if (busy.value) return
+  busy.value = true
+  try {
+    const res = await toggleAccompanyingParent(parentId)
+    // active if EndTime is null
+    participationActive.value[parentId] = !res.EndTime
+  } catch (e) {
+    errorMsg.value = e instanceof Error ? e.message : t('child_detail.error_fallback')
+  } finally {
+    busy.value = false
+  }
 }
 </script>

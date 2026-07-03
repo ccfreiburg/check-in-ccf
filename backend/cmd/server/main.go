@@ -125,9 +125,12 @@ func main() {
 		r.Post("/api/admin/checkins/{id}/set-status", h.SetCheckInStatus)
 		r.Post("/api/admin/checkins/{id}/notify", h.SendParentMessage)
 		r.Delete("/api/admin/checkins/{id}/notify", h.ClearNotify)
+		r.Post("/api/admin/parents/{id}/accompany", h.ToggleAccompanyingParent)
 		r.Post("/api/admin/sync", h.SyncCT)
 		r.Get("/api/admin/reports", h.ListReports)
 		r.Get("/api/admin/reports/{filename}", h.GetReport)
+		r.Get("/api/admin/reports/parents", h.ListParentReports)
+		r.Get("/api/admin/reports/parents/{filename}", h.GetParentReport)
 	})
 
 	// Parent-facing routes (require parent token embedded in URL path)

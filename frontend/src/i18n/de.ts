@@ -141,7 +141,11 @@ export default {
     reports_description: 'CSV-Protokolle aller beendeten Events mit Registrierungs-, Check-in- und Check-out-Zeiten.',
     reports_empty: 'Noch keine Berichte vorhanden.',
     reports_download: 'Herunterladen',
-    reports_error: 'Fehler beim Laden der Berichte',  },
+    reports_error: 'Fehler beim Laden der Berichte',
+    parent_reports_heading: 'Begleitende Eltern Berichte',
+    parent_reports_description: 'CSV-Protokolle mit Beginn/Ende von begleitenden Eltern.',
+    parent_reports_empty: 'Noch keine Berichte für begleitende Eltern vorhanden.',
+  },
 
   // ── ChildCard ─────────────────────────────────────────────────────────────
   child_card: {

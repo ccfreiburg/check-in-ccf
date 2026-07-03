@@ -64,3 +64,15 @@ type CheckIn struct {
 	// Stored at registration time to avoid a DB lookup in hot paths.
 	IsGuest bool
 }
+
+// AccompanyingParent tracks a parent who is accompanying a child during an event.
+// One row per start/end pair for a given EventDate and ParentID.
+type AccompanyingParent struct {
+	gorm.Model
+	EventDate string `gorm:"index"`
+	ParentID  int    `gorm:"index"`
+	FirstName string
+	LastName  string
+	StartTime *time.Time
+	EndTime   *time.Time
+}

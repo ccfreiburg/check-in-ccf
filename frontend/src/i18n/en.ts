@@ -142,7 +142,11 @@ export default {
     reports_description: 'CSV logs of all completed events with registration, check-in, and check-out times.',
     reports_empty: 'No reports yet.',
     reports_download: 'Download',
-    reports_error: 'Error loading reports',  },
+    reports_error: 'Error loading reports',
+    parent_reports_heading: 'Accompanying Parents Reports',
+    parent_reports_description: 'CSV logs with start/end timestamps for accompanying parents.',
+    parent_reports_empty: 'No accompanying parent reports yet.',
+  },
 
   // ── ChildCard ─────────────────────────────────────────────────────────────
   child_card: {

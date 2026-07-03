@@ -178,6 +178,34 @@ export async function downloadReport(filename: string): Promise<void> {
   URL.revokeObjectURL(url)
 }
 
+export async function listParentReports(): Promise<EventReport[]> {
+  const res = await fetch(`${BASE}/admin/reports/parents`, { headers: authHeaders() })
+  const data = await handleResponse<EventReport[] | null>(res)
+  return data ?? []
+}
+
+export async function downloadParentReport(filename: string): Promise<void> {
+  const res = await fetch(`${BASE}/admin/reports/parents/${encodeURIComponent(filename)}`, {
+    headers: authHeaders(),
+  })
+  if (!res.ok) throw new ApiError(res.status, await res.text())
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+export async function toggleAccompanyingParent(parentId: number): Promise<any> {
+  const res = await fetch(`${BASE}/admin/parents/${parentId}/accompany`, {
+    method: 'POST',
+    headers: authHeaders(),
+  })
+  return handleResponse<any>(res)
+}
+
 // ── Parent-facing endpoints ───────────────────────────────────────────────
 
 export async function getParentPage(token: string): Promise<ParentCheckinPage> {
