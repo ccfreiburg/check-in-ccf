@@ -23,29 +23,6 @@
         </div>
       </div>
 
-      <!-- Accompanying Parents Reports -->
-      <div class="bg-white rounded-2xl shadow-sm p-5 space-y-3">
-        <p class="text-sm font-semibold text-gray-700">{{ t('admin.parent_reports_heading') }}</p>
-        <p class="text-sm text-gray-500">{{ t('admin.parent_reports_description') }}</p>
-        <div v-if="parentReportsError" class="text-sm text-red-600">{{ t('admin.reports_error') }}</div>
-        <p v-else-if="parentReports.length === 0" class="text-sm text-gray-400 italic">{{ t('admin.parent_reports_empty') }}</p>
-        <ul v-else class="divide-y divide-gray-100">
-          <li
-            v-for="report in parentReports"
-            :key="report.filename"
-            class="flex items-center justify-between py-2"
-          >
-            <span class="text-sm text-gray-700 font-mono">{{ report.filename }}</span>
-            <button
-              @click="handleDownloadParent(report.filename)"
-              class="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800 transition"
-            >
-              {{ t('admin.reports_download') }}
-            </button>
-          </li>
-        </ul>
-      </div>
-
       <!-- Sync -->
       <div class="bg-white rounded-2xl shadow-sm p-5 space-y-3">
         <p class="text-sm font-semibold text-gray-700">{{ t('admin.sync_heading') }}</p>
@@ -105,6 +82,30 @@
           </li>
         </ul>
       </div>
+
+      <!-- Accompanying Parents Reports -->
+      <div class="bg-white rounded-2xl shadow-sm p-5 space-y-3">
+        <p class="text-sm font-semibold text-gray-700">{{ t('admin.parent_reports_heading') }}</p>
+        <p class="text-sm text-gray-500">{{ t('admin.parent_reports_description') }}</p>
+        <div v-if="parentReportsError" class="text-sm text-red-600">{{ t('admin.reports_error') }}</div>
+        <p v-else-if="parentReports.length === 0" class="text-sm text-gray-400 italic">{{ t('admin.parent_reports_empty') }}</p>
+        <ul v-else class="divide-y divide-gray-100">
+          <li
+            v-for="report in parentReports"
+            :key="report.filename"
+            class="flex items-center justify-between py-2"
+          >
+            <span class="text-sm text-gray-700 font-mono">{{ report.filename }}</span>
+            <button
+              @click="handleDownloadParent(report.filename)"
+              class="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800 transition"
+            >
+              {{ t('admin.reports_download') }}
+            </button>
+          </li>
+        </ul>
+      </div>
+
     </div>
   </div>
 </template>
@@ -135,6 +136,7 @@ async function confirmEndEvent() {
     await endEvent()
     endMsg.value = t('admin.end_event_success')
     await loadReports()
+    await loadParentReports()
   } catch (e) {
     endMsg.value = e instanceof Error ? e.message : t('admin.end_event_error')
   } finally {
