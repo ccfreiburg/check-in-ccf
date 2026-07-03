@@ -1,11 +1,14 @@
 # ── Stage 1: Build frontend ────────────────────────────────────────────────
 FROM node:22-alpine AS frontend-builder
+ARG VITE_APP_PARENT_PARTICIPATION_GROUP_ID
 WORKDIR /app
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 COPY frontend/ .
 # Disable dev-only HTTPS plugin; the container is behind a TLS-terminating proxy.
-RUN VITE_HTTPS=false npm run build
+# Pass repository variable `VITE_APP_PARENT_PARTICIPATION_GROUP_ID` as a build-arg
+# so Vite can pick it up during `npm run build`.
+RUN VITE_HTTPS=false VITE_APP_PARENT_PARTICIPATION_GROUP_ID=${VITE_APP_PARENT_PARTICIPATION_GROUP_ID} npm run build
 
 # ── Stage 2: Build backend ─────────────────────────────────────────────────
 FROM golang:1.24-alpine AS backend-builder

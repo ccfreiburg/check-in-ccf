@@ -79,6 +79,7 @@ jobs:
             devccf/kinder-check-in:${{ steps.version.outputs.version }}
           build-args: |
             GITHUB_SHA=${{ github.sha }}
+            VITE_APP_PARENT_PARTICIPATION_GROUP_ID=${{ vars.VITE_APP_PARENT_PARTICIPATION_GROUP_ID }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           platforms: linux/amd64
